@@ -1,0 +1,17 @@
+name = "unicode normalisation does not break the envelope"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Ünïcode ✓ – ﬁnal"
+via = ["nfc"]
+expect = "authenticated:registered-instance"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Zweite Nachricht"
+via = ["nfkc"]
+expect = "authenticated:registered-instance"

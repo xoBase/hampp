@@ -1,0 +1,29 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "clippy, rustfmt" }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - name: Independent vector verification
+        run: |
+          pip install cryptography
+          python -I spec/vectors/verify_vectors.py spec/vectors/lite.json
+          python -I spec/vectors/verify_vectors.py --handshake spec/vectors/handshake.json
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          python -m venv .venv && . .venv/bin/activate
+          pip install maturin pytest
+          cd crates/hampp-py && maturin develop && pytest tests -q

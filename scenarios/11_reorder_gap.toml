@@ -1,0 +1,38 @@
+name = "reordered delivery: gap is a note, late messages are replays"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "eins"
+hold = true
+expect = "-"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "zwei"
+hold = true
+expect = "-"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "drei"
+hold = true
+expect = "-"
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 2
+expect = "authenticated:registered-instance"
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 0
+expect = "invalid:replay"
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 1
+expect = "invalid:replay"

@@ -1,0 +1,15 @@
+name = "replayed message is rejected"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Zahle 100 Euro"
+expect = "authenticated:registered-instance"
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 0
+expect = "invalid:replay"

@@ -1,0 +1,11 @@
+name = "lite profile: one message, one signature, no handshake"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+mode = "lite"
+text = "Hallo"
+expect = "authenticated:signed-by-agent"

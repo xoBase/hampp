@@ -1,0 +1,21 @@
+[package]
+name = "hampp-core"
+description = "HAMPP core: identity, signatures, envelope header, verdicts, registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hampp-envelope = { workspace = true }
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }
+rand_core = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = { workspace = true }

@@ -1,0 +1,11 @@
+name = "message is truncated in transit"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Der Auftrag wurde erfolgreich ausgeführt."
+via = ["truncate_tail:5"]
+expect = "unverified:envelope-corrupt"

@@ -1,0 +1,11 @@
+name = "platform strips zero-width characters"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Der Auftrag wurde erfolgreich ausgeführt."
+via = ["strip_zw"]
+expect = "unverified:envelope-missing"

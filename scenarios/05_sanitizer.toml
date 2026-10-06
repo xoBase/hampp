@@ -1,0 +1,11 @@
+name = "sanitizer strips all invisible format characters"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Der Auftrag wurde erfolgreich ausgeführt."
+via = ["sanitize_invisible"]
+expect = "unverified:envelope-missing"

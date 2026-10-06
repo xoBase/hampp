@@ -1,0 +1,19 @@
+name: Interoperability experiment
+description: Propose or report an experiment with another protocol, framework or implementation
+labels: [interop]
+body:
+  - type: input
+    id: target
+    attributes:
+      label: Other protocol, project or implementation
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would be tested
+      description: A concrete experiment. Note what HAMPP does not provide (v0.1 has no hardware binding, no confidentiality, no authorization).
+    validations: { required: true }
+  - type: textarea
+    id: result
+    attributes:
+      label: Result so far (if any)

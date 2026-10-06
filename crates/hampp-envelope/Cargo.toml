@@ -1,0 +1,13 @@
+[package]
+name = "hampp-envelope"
+description = "Zero-width envelope codec for HAMPP (bytes <-> invisible characters)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hex = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

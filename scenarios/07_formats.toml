@@ -1,0 +1,35 @@
+name = "JSON, HTML, Markdown, newline and CRLF transports"
+[[agents]]
+name = "alice"
+[[agents]]
+name = "bob"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Nachricht über json"
+via = ["json"]
+expect = "authenticated:registered-instance"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Nachricht über html"
+via = ["html"]
+expect = "authenticated:registered-instance"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Nachricht über markdown"
+via = ["markdown"]
+expect = "authenticated:registered-instance"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Nachricht über trim"
+via = ["trim"]
+expect = "authenticated:registered-instance"
+[[steps]]
+from = "alice"
+to = "bob"
+text = "Nachricht über crlf"
+via = ["crlf"]
+expect = "authenticated:registered-instance"

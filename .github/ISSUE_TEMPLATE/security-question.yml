@@ -1,0 +1,15 @@
+name: Security or protocol question
+description: One concrete technical question about the design (not "improve security")
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Be specific, for example "Does the transcript bind the capability list?" or "What happens if two sessions share a nonce?"
+    validations: { required: true }
+  - type: textarea
+    id: context
+    attributes:
+      label: What you already checked
+      description: Files, spec sections or tests you looked at.

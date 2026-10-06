@@ -1,0 +1,12 @@
+target/
+__pycache__/
+.venv/
+*.so
+*.pyd
+hampp-key.json
+.superpowers/
+fuzz/target/
+fuzz/Cargo.lock
+
+# local planning documents (not published)
+docs/superpowers/

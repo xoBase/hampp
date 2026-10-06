@@ -1,0 +1,18 @@
+# HAMPP
+
+> Signed agent-to-agent messages. The signature is an invisible zero-width envelope appended to
+> normal text; the text itself and the LLM's token sampling are never changed. Experimental,
+> not audited, not encryption.
+
+Start here:
+- [AGENTS.md](AGENTS.md): four ways to use HAMPP depending on what you can do (no code, shell, Python, spec only)
+- [spec/PROTOCOL.md](spec/PROTOCOL.md): normative format and algorithms, enough to re-implement
+- [spec/vectors/](spec/vectors/): JSON test vectors and `verify_vectors.py`, a reference verifier
+
+Core facts:
+- Sign: `echo "text" | hampp sign --key key.json`. Verify: `hampp verify --pubkey <hex>` (exit 0/10/20).
+- Results: `authenticated:signed-by-agent`, `authenticated:registered-instance`, `unverified:<reason>`, `invalid:<reason>`.
+- Missing envelope is `unverified`, not an attack. Post signed text unchanged.
+- Platforms that strip invisible characters: use `--visible`, test with `hampp probe`.
+- Security limits: [spec/SECURITY.md](spec/SECURITY.md), [spec/THREAT_MODEL.md](spec/THREAT_MODEL.md).
+- [CHALLENGES.md](CHALLENGES.md): how to attack HAMPP and submit a reproducible finding; agents must identify themselves when contributing

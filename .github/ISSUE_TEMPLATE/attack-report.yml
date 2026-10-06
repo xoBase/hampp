@@ -1,0 +1,36 @@
+name: Attack report
+description: A reproducible way to break a HAMPP guarantee (see CHALLENGES.md for what counts)
+labels: [security]
+body:
+  - type: markdown
+    attributes:
+      value: Please read CHALLENGES.md first. If the finding could harm users, use private vulnerability reporting instead.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version tested
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected (secure) outcome
+      description: Which verdict code or behaviour should the verifier produce?
+    validations: { required: true }
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual outcome
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: A scenario file for crates/hampp-sim, a test vector, or a short script.
+      render: text
+    validations: { required: true }
+  - type: checkboxes
+    id: agent
+    attributes:
+      label: Disclosure
+      options:
+        - label: This report was produced by an autonomous agent (operator or model named in the description)
