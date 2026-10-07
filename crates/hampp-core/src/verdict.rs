@@ -57,6 +57,7 @@ pub enum Reason {
     Replay,
     ChainBroken,
     ClockSkew,
+    ProtectionTooLow,
 }
 
 impl Reason {
@@ -74,16 +75,19 @@ impl Reason {
             Reason::Replay => "replay",
             Reason::ChainBroken => "chain-broken",
             Reason::ClockSkew => "clock-skew",
+            Reason::ProtectionTooLow => "protection-too-low",
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedKey {
-    pub public_key: [u8; 32],
+    pub public_key: crate::PublicKey,
     pub agent_id: Option<String>,
     pub instance_id: Option<[u8; 16]>,
     pub trust: Option<TrustState>,
+    /// Protection the receiver's registry records for this key, if any.
+    pub protection: Option<crate::Protection>,
 }
 
 pub trait KeyResolver {
@@ -91,15 +95,16 @@ pub trait KeyResolver {
 }
 
 /// Resolver for one known public key (no registry).
-pub struct SingleKey(pub [u8; 32]);
+pub struct SingleKey(pub crate::PublicKey);
 
 impl KeyResolver for SingleKey {
     fn resolve(&self, key_id: &[u8; 8], _now: u64) -> Option<ResolvedKey> {
-        (crate::key_id_of(&self.0) == *key_id).then_some(ResolvedKey {
-            public_key: self.0,
+        (self.0.key_id() == *key_id).then_some(ResolvedKey {
+            public_key: self.0.clone(),
             agent_id: None,
             instance_id: None,
             trust: None,
+            protection: None,
         })
     }
 }
@@ -109,6 +114,8 @@ pub struct Verdict {
     pub status: Status,
     pub reason: Option<Reason>,
     pub level: Option<Level>,
+    /// Set for authenticated messages (and kept when a policy downgrades them).
+    pub protection: Option<crate::EffectiveProtection>,
     pub header: Option<Header>,
     pub visible: String,
     pub key: Option<ResolvedKey>,
@@ -121,6 +128,7 @@ impl Verdict {
             status,
             reason: Some(reason),
             level: None,
+            protection: None,
             header: None,
             visible,
             key: None,
@@ -144,6 +152,20 @@ impl Verdict {
         }
     }
 
+    /// Applies a receiver policy: an `authenticated` verdict whose effective protection is below
+    /// `min` becomes `unverified:protection-too-low`. Every other verdict is returned unchanged
+    /// (invalid and unknown-key results take precedence).
+    pub fn with_min_protection(mut self, min: Option<crate::Protection>) -> Verdict {
+        if let (Status::Authenticated, Some(min), Some(p)) = (self.status, min, self.protection) {
+            if p.level < min {
+                self.status = Status::Unverified;
+                self.reason = Some(Reason::ProtectionTooLow);
+                self.level = None;
+            }
+        }
+        self
+    }
+
     /// Turns a verdict into `invalid:<reason>` (used by session checks).
     pub fn fail(mut self, reason: Reason) -> Verdict {
         self.status = Status::Invalid;
@@ -159,6 +181,8 @@ impl Verdict {
             "status": self.status.as_str(),
             "reason": self.reason.map(|r| r.code()),
             "level": self.level.map(|l| l.as_str()),
+            "protection": self.protection.map(|p| p.level.as_str()),
+            "protection_claimed": self.protection.map(|p| p.claimed),
             "key_id": h.map(|h| hex::encode(h.key_id)),
             "agent_id": self.key.as_ref().and_then(|k| k.agent_id.clone()),
             "trust": self.key.as_ref().and_then(|k| k.trust),

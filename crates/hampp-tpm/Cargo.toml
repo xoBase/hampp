@@ -1,22 +1,19 @@
 [package]
-name = "hampp-core"
-description = "HAMPP core: identity, signatures, envelope header, verdicts, registry"
+name = "hampp-tpm"
+description = "HAMPP TPM 2.0 backend: non-exportable ECDSA P-256 keys (protection level bound)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-hampp-envelope = { workspace = true }
-ed25519-dalek = { workspace = true }
-sha2 = { workspace = true }
-p256 = { workspace = true }
-rand_core = { workspace = true }
+hampp-core = { workspace = true }
+tss-esapi = "7.6"
 hex = { workspace = true }
+sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-proptest = { workspace = true }
 tempfile = { workspace = true }

@@ -219,7 +219,7 @@ pub fn run(s: &Scenario) -> Result<Vec<String>, SimError> {
         let code = if msg.lite {
             verify_text(
                 &text,
-                &SingleKey(identity_of(&msg.claimed).identity.public_key),
+                &SingleKey(identity_of(&msg.claimed).identity.public_key.into()),
                 now,
             )
             .code()

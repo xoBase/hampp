@@ -150,3 +150,17 @@ fn session_state_survives_json_roundtrip() {
     assert_eq!(again.out_seq, 1);
     assert_eq!(again.id, sb.id);
 }
+
+#[test]
+fn session_state_advances_when_a_protection_policy_downgrades_the_verdict() {
+    use hampp_core::Protection;
+    let (mut sa, mut sb) = full_handshake();
+    let m = sa.sign_next(&alice(), "Hallo Bob", NOW, Carrier::ZeroWidth);
+    let v = sb
+        .verify_next(&m, NOW)
+        .with_min_protection(Some(Protection::Bound));
+    assert_eq!(v.code(), "unverified:protection-too-low");
+    assert_eq!(sb.in_seq, 1, "an authentic message advances the state");
+    // the same message again is a replay, not acceptable later by lowering the policy
+    assert_eq!(sb.verify_next(&m, NOW).code(), "invalid:replay");
+}

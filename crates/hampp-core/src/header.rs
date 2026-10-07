@@ -1,6 +1,18 @@
+use crate::Protection;
 pub const MAGIC: [u8; 2] = *b"HP";
 pub const VERSION: u8 = 1;
 pub const FLAG_SESSION: u8 = 0x01;
+pub const FLAG_PROTECTION_SHIFT: u8 = 1;
+pub const FLAG_PROTECTION_MASK: u8 = 0b0000_0110;
+
+/// Flags byte for a message: session bit plus protection bits.
+pub fn flags_for(session: bool, protection: Protection) -> u8 {
+    (if session { FLAG_SESSION } else { 0 }) | ((protection as u8) << FLAG_PROTECTION_SHIFT)
+}
+
+fn protection_of(flags: u8) -> Option<Protection> {
+    Protection::from_bits((flags & FLAG_PROTECTION_MASK) >> FLAG_PROTECTION_SHIFT)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
@@ -79,6 +91,12 @@ impl<'a> Cur<'a> {
 }
 
 impl Header {
+    /// Protection level claimed in the (signed) flags. Headers built by hand with a
+    /// reserved value read as `Software`; `decode` never produces such a header.
+    pub fn protection(&self) -> Protection {
+        protection_of(self.flags).unwrap_or(Protection::Software)
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(112);
         v.extend(MAGIC);
@@ -104,7 +122,7 @@ impl Header {
             return Err(HeaderError::UnsupportedVersion(version));
         }
         let flags = c.take(1)?[0];
-        if flags & !FLAG_SESSION != 0 {
+        if flags & !(FLAG_SESSION | FLAG_PROTECTION_MASK) != 0 || protection_of(flags).is_none() {
             return Err(HeaderError::UnsupportedFlags);
         }
         let suite = c.take(1)?[0];
@@ -187,6 +205,41 @@ mod tests {
         let mut bad = good.clone();
         bad.push(0);
         assert_eq!(Header::decode(&bad), Err(HeaderError::TrailingBytes));
+    }
+    #[test]
+    fn protection_bits_roundtrip_and_are_signed() {
+        let mut h = sample();
+        for p in [
+            Protection::Software,
+            Protection::Bound,
+            Protection::Attested,
+        ] {
+            h.flags = flags_for(true, p);
+            let d = Header::decode(&h.encode()).unwrap();
+            assert_eq!(d.protection(), p);
+            assert_eq!(d.flags & FLAG_SESSION, FLAG_SESSION);
+        }
+        let ph = [9u8; 32];
+        let mut a = sample();
+        a.flags = flags_for(false, Protection::Software);
+        let mut b = sample();
+        b.flags = flags_for(false, Protection::Bound);
+        assert_ne!(a.signing_input(&ph), b.signing_input(&ph));
+    }
+    #[test]
+    fn reserved_protection_value_and_high_flag_bits_are_rejected() {
+        let mut bytes = sample().encode();
+        bytes[3] = 0b0000_0110; // protection = 3
+        assert_eq!(Header::decode(&bytes), Err(HeaderError::UnsupportedFlags));
+        for bit in 3..8 {
+            let mut b = sample().encode();
+            b[3] = 1 << bit;
+            assert_eq!(
+                Header::decode(&b),
+                Err(HeaderError::UnsupportedFlags),
+                "bit {bit}"
+            );
+        }
     }
     #[test]
     fn non_canonical_varint_is_rejected() {

@@ -19,14 +19,18 @@ magic "HP" (2) | version (1) = 1 | flags (1) | suite (1) | key_id (8) | session_
 seq (varint) | timestamp (varint) | prev_hash (16) | signature (64)
 ```
 
-- `flags`: bit 0 = session message; all other bits MUST be 0 (reject otherwise).
-- `suite`: 1 = Ed25519 + SHA-256. Other values: `unsupported-suite`.
-- `key_id` = first 8 bytes of SHA-256(public key). `session_id` is 8 zero bytes for sessionless (Lite) messages.
+- `flags`: bit 0 = session message; bits 1-2 = `protection` (0 software, 1 bound, 2 attested; 3 is reserved); bits 3-7 MUST be 0.
+  A reserved protection value or a set bit 3-7 is a decode failure (section 4, step 2).
+- `suite`: 1 = Ed25519 + SHA-256; 2 = ECDSA P-256 + SHA-256. Other values: `unsupported-suite`.
+- `key_id`: suite 1 = first 8 bytes of SHA-256(public key, 32 bytes); suite 2 = first 8 bytes of SHA-256(SEC1 compressed point, 33 bytes).
+  The input lengths differ, so a key id never collides across suites. `session_id` is 8 zero bytes for sessionless (Lite) messages.
+- Suite 2 signature: raw `r || s`, each 32 bytes big-endian, 64 bytes in total (same size as suite 1). `s` MUST be low (`s <= n/2`);
+  signers normalise `s -> n - s` and verifiers MUST reject a high `s` (the signature feeds `prev_hash`, so its form must be unique).
 - `varint`: unsigned LEB128, at most 10 bytes, canonical form only (no redundant trailing zero group).
 - `timestamp`: unix seconds. `seq`: 0 for Lite, starting at 1 within a session.
 - No trailing bytes are allowed after `signature`.
 
-Signing input (Ed25519, strict verification):
+Signing input (Ed25519 strict verification, or ECDSA P-256 over SHA-256 of this input):
 
 ```
 "HAMPP/1 msg" || version(1) || flags(1) || suite(1) || key_id(8) || session_id(8) ||
@@ -53,16 +57,17 @@ at the very end. The zero-width carrier is tried first.
 
 1. Extract the envelope: missing -> `unverified:envelope-missing`; corrupt -> `unverified:envelope-corrupt`.
 2. Decode the header: bad version -> `invalid:unsupported-version`; any other decode failure -> `unverified:envelope-corrupt`.
-3. Suite not 1 -> `invalid:unsupported-suite`.
+3. Suite not 1 or 2 -> `invalid:unsupported-suite`.
 4. Resolve the public key by `key_id` (single known key or registry): none -> `unverified:unknown-key`.
 5. Verify the signature over the signing input: failure -> `invalid:signature-invalid`
    (changed text, changed envelope, or a different key with the same key id; the cause is not distinguishable).
 6. Registry trust: `REVOKED` -> `invalid:key-revoked`; `EXPIRED` -> `invalid:key-expired`.
-7. Otherwise `authenticated:signed-by-agent`.
+7. Otherwise `authenticated:signed-by-agent`, then the protection rules of section 8 apply.
 
 Verdict codes: `authenticated:signed-by-agent`, `authenticated:registered-instance`, `unverified:<reason>`, `invalid:<reason>`.
 Reasons: `envelope-missing`, `envelope-corrupt`, `unknown-key`, `unsupported-version`, `unsupported-suite`,
-`signature-invalid`, `key-revoked`, `key-expired`, `wrong-session`, `replay`, `chain-broken`, `clock-skew`.
+`signature-invalid`, `key-revoked`, `key-expired`, `wrong-session`, `replay`, `chain-broken`, `clock-skew`, `protection-too-low`
+(`unverified`, see section 8).
 
 ## 5. Handshake (Full profile)
 
@@ -101,3 +106,28 @@ Per direction, `seq` starts at 1 and `prev_hash` of message n is the first 16 by
 Header version 1. A verifier that does not know a version reports `unsupported-version` and must not guess.
 Profiles: Lite (sessionless), Full (handshake + session), verify-only (no own key). A Lite sender and a Full receiver meet at the
 smaller level `signed-by-agent`.
+
+## 8. Protection levels
+
+The `protection` field says how well the signing key is protected. It is about the strength of the statement "this key signed this text",
+not about secrecy of the text: HAMPP encrypts nothing.
+
+| Value | Level | Meaning | Verifiable by a remote party |
+|---|---|---|---|
+| 0 | `software` | key in a file | nothing about hardware |
+| 1 | `bound` | non-exportable key in a hardware store (for example a TPM) | no: reported as `claimed` |
+| 2 | `attested` | like `bound`, plus evidence (certificate chain) | only with verified evidence |
+
+After step 7 of section 4 the receiver computes the **effective protection**:
+
+1. With a registry entry that records a protection for the key: `min(header, entry)`; the result is not `claimed`. If the header is higher, the entry wins and the
+   note `protection-capped` is added. A lower header value stands (the sender chose less).
+2. Without such an entry (single key, unknown level): the header value, reported as `claimed`.
+3. `attested` without verified evidence counts as `bound` (note `attestation-not-verified`). This version defines no evidence format.
+4. If the receiver requires a minimum protection and the effective protection is lower, a result that would be `authenticated` becomes
+   `unverified:protection-too-low`. `invalid:*` results and `unverified:unknown-key` take precedence. In a session the state (sequence, chain) advances as for any
+   authenticated message; only the verdict changes.
+
+Compatibility: a message with protection >= 1 is a decode failure for a version-1 verifier that predates this section
+(`unverified:envelope-corrupt`); every suite 2 message is `invalid:unsupported-suite` for such a verifier. Neither is ever `authenticated`.
+Messages with protection 0 and suite 1 are unchanged.

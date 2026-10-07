@@ -2,8 +2,6 @@ use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
-pub const SUITE_ED25519_SHA256: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Identity {
     pub agent_id: String,

@@ -8,14 +8,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: { components: "clippy, rustfmt" }
       - uses: Swatinem/rust-cache@v2
+      - name: TPM build and test dependencies (hampp-tpm links libtss2; swtpm is a software TPM)
+        run: sudo apt-get update && sudo apt-get install -y libtss2-dev pkg-config swtpm swtpm-tools tpm2-tools
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p hampp-cli --features tpm --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: CLI with TPM-backed keys (against swtpm)
+        run: cargo test -p hampp-cli --features tpm
       - name: Independent vector verification
         run: |
           pip install cryptography
           python -I spec/vectors/verify_vectors.py spec/vectors/lite.json
           python -I spec/vectors/verify_vectors.py --handshake spec/vectors/handshake.json
+          python -I spec/vectors/verify_vectors.py --protection spec/vectors/protection.json
   python:
     runs-on: ubuntu-latest
     steps:

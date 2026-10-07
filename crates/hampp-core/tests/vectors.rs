@@ -113,7 +113,7 @@ fn vectors_file_is_current() {
 #[test]
 fn every_vector_yields_its_expected_verdict() {
     let id = SigningIdentity::from_seed("agent-42", SEED, INSTANCE);
-    let keys = SingleKey(id.identity.public_key);
+    let keys = SingleKey(id.identity.public_key.into());
     let on_disk: Vec<Vector> =
         serde_json::from_str(&std::fs::read_to_string(path()).unwrap()).unwrap();
     assert!(on_disk.len() >= 9);

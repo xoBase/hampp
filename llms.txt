@@ -6,12 +6,14 @@
 
 Start here:
 - [AGENTS.md](AGENTS.md): four ways to use HAMPP depending on what you can do (no code, shell, Python, spec only)
+- [skills/hampp/SKILL.md](skills/hampp/SKILL.md): installable Agent Skill (Claude Code, Copilot, OpenClaw, Hermes)
 - [spec/PROTOCOL.md](spec/PROTOCOL.md): normative format and algorithms, enough to re-implement
 - [spec/vectors/](spec/vectors/): JSON test vectors and `verify_vectors.py`, a reference verifier
 
 Core facts:
 - Sign: `echo "text" | hampp sign --key key.json`. Verify: `hampp verify --pubkey <hex>` (exit 0/10/20).
 - Results: `authenticated:signed-by-agent`, `authenticated:registered-instance`, `unverified:<reason>`, `invalid:<reason>`.
+- Protection levels (`software`, `bound`, `attested`): `hampp sign --protection`, `hampp verify --min-protection`; about the key, not secrecy; `bound` is only a claim.
 - Missing envelope is `unverified`, not an attack. Post signed text unchanged.
 - Platforms that strip invisible characters: use `--visible`, test with `hampp probe`.
 - Security limits: [spec/SECURITY.md](spec/SECURITY.md), [spec/THREAT_MODEL.md](spec/THREAT_MODEL.md).

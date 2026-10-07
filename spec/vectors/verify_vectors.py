@@ -5,7 +5,9 @@ import json
 import sys
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 SYMS = ["​", "‌", "‍", "⁠"]
@@ -110,6 +112,85 @@ def verify(text: str, pubkey: bytes) -> str:
     return "authenticated:signed-by-agent"
 
 
+P256_N = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+PROTECTION = ["software", "bound", "attested"]
+
+
+def verify_p256(pubkey: bytes, sig: bytes, msg: bytes) -> bool:
+    """ECDSA P-256 / SHA-256, raw r||s, high s rejected (spec/PROTOCOL.md section 2)."""
+    r, s = int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")
+    if s > P256_N // 2:
+        return False
+    try:
+        key = ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), pubkey)
+        key.verify(encode_dss_signature(r, s), msg, ec.ECDSA(hashes.SHA256()))
+    except (InvalidSignature, ValueError):
+        return False
+    return True
+
+
+def verify_protection(text: str, pubkey: bytes, registry=None, minimum=None):
+    """Sections 2, 4 and 8 of spec/PROTOCOL.md. Returns (code, protection or None, notes)."""
+    visible, st, payload = extract(text)
+    if st == "missing":
+        visible, st, payload = extract_visible(text)
+    if st == "missing":
+        return "unverified:envelope-missing", None, []
+    if st == "corrupt":
+        return "unverified:envelope-corrupt", None, []
+    if payload[:2] != b"HP" or payload[2] != 1:
+        return "invalid:unsupported-version", None, []
+    flags, suite, key_id, session_id, seq, ts, prev, sig = parse_header(payload)
+    if flags & ~0b111 or (flags >> 1) & 3 == 3:
+        return "unverified:envelope-corrupt", None, []
+    if suite not in (1, 2):
+        return "invalid:unsupported-suite", None, []
+    if hashlib.sha256(pubkey).digest()[:8] != key_id:
+        return "unverified:unknown-key", None, []
+    inp = signing_input(flags, suite, key_id, session_id, seq, ts, payload_hash(visible), prev)
+    if (1 if len(pubkey) == 32 else 2) != suite:
+        return "invalid:signature-invalid", None, []
+    if suite == 1:
+        try:
+            Ed25519PublicKey.from_public_bytes(pubkey).verify(sig, inp)
+        except InvalidSignature:
+            return "invalid:signature-invalid", None, []
+    elif not verify_p256(pubkey, sig, inp):
+        return "invalid:signature-invalid", None, []
+    # Section 8: attested counts as bound (no evidence format); the registry caps the claim.
+    header = (flags >> 1) & 3
+    notes = []
+    if header == 2:
+        notes.append("attestation-not-verified")
+    header = min(header, 1)
+    if registry is None:
+        level = header
+    else:
+        known = PROTOCOL_INDEX[registry]
+        level = min(header, min(known, 1))
+        if header > known:
+            notes.append("protection-capped")
+    if minimum is not None and level < PROTOCOL_INDEX[minimum]:
+        return "unverified:protection-too-low", PROTECTION[level], notes
+    return "authenticated:signed-by-agent", PROTECTION[level], notes
+
+
+PROTOCOL_INDEX = {name: i for i, name in enumerate(PROTECTION)}
+
+
+def check_protection(path: str) -> int:
+    failures = 0
+    for v in json.load(open(path, encoding="utf-8")):
+        text = bytes.fromhex(v["signed_text_hex"]).decode("utf-8")
+        got = verify_protection(text, bytes.fromhex(v["public_key_hex"]),
+                                v.get("registry_protection"), v.get("min_protection"))
+        want = (v["expected"], v["expected_protection"], v["expected_notes"])
+        ok = got == want
+        failures += not ok
+        print(("ok   " if ok else "FAIL ") + v["name"] + ("" if ok else f" got={got} expected={want}"))
+    return 1 if failures else 0
+
+
 def pub_of(seed_hex: str) -> bytes:
     priv = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
     return priv.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
@@ -186,6 +267,8 @@ def check_handshake(path: str) -> int:
 def main(argv) -> int:
     if len(argv) >= 2 and argv[0] == "--handshake":
         return check_handshake(argv[1])
+    if len(argv) >= 2 and argv[0] == "--protection":
+        return check_protection(argv[1])
     return check_lite(argv[0] if argv else "spec/vectors/lite.json")
 
 

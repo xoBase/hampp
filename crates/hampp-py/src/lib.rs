@@ -52,7 +52,7 @@ fn sign(text: &str, key_path: &str, visible: bool) -> PyResult<String> {
 
 #[pyfunction]
 fn verify_json(text: &str, public_key_hex: &str) -> PyResult<String> {
-    let v = verify_text(text, &SingleKey(pubkey(public_key_hex)?), now());
+    let v = verify_text(text, &SingleKey(pubkey(public_key_hex)?.into()), now());
     let mut j = v.to_json();
     j["visible"] = serde_json::Value::String(v.visible.clone());
     Ok(j.to_string())
@@ -62,7 +62,7 @@ fn verify_json(text: &str, public_key_hex: &str) -> PyResult<String> {
 fn annotate(text: &str, public_key_hex: &str) -> PyResult<String> {
     Ok(core_annotate(&verify_text(
         text,
-        &SingleKey(pubkey(public_key_hex)?),
+        &SingleKey(pubkey(public_key_hex)?.into()),
         now(),
     )))
 }

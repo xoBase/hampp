@@ -1,7 +1,8 @@
 use crate::io::{now, Res};
 use crate::keys::parse_pubkey;
+use crate::ProtectionArg;
 use clap::{Subcommand, ValueEnum};
-use hampp_core::{key_id_of, Identity, Registry, TrustState};
+use hampp_core::{Protection, Registry, TrustState};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -36,6 +37,9 @@ pub enum RegCmd {
         /// Unix time after which the entry counts as EXPIRED.
         #[arg(long)]
         expires: Option<u64>,
+        /// Protection this receiver attributes to the key (caps what the sender claims).
+        #[arg(long, value_enum)]
+        protection: Option<ProtectionArg>,
     },
     List {
         #[arg(long)]
@@ -57,7 +61,7 @@ pub enum RegCmd {
 
 fn set(file: &Path, pubkey: &str, t: TrustState) -> Res<ExitCode> {
     let mut r = Registry::load(file)?;
-    let kid = key_id_of(&parse_pubkey(pubkey)?);
+    let kid = parse_pubkey(pubkey)?.key_id();
     if !r.set_trust(&kid, t) {
         return Err("key is not in the registry; use `registry add` first".into());
     }
@@ -73,16 +77,16 @@ pub fn run(cmd: RegCmd) -> Res<ExitCode> {
             agent,
             trust,
             expires,
+            protection,
         } => {
             let mut r = Registry::load(&file)?;
             let public_key = parse_pubkey(&pubkey)?;
             // The instance id is unknown to the registrar; zeros until a handshake supplies it.
-            let id = Identity {
-                agent_id: agent,
-                instance_id: [0; 16],
-                public_key,
-            };
-            r.add(&id, trust.into(), now(), expires)?;
+            let kid = public_key.key_id();
+            r.add_key(&agent, [0; 16], public_key, trust.into(), now(), expires)?;
+            if let Some(p) = protection {
+                r.set_protection(&kid, Some(Protection::from(p)));
+            }
             r.save(&file)?;
             Ok(ExitCode::SUCCESS)
         }
@@ -92,11 +96,12 @@ pub fn run(cmd: RegCmd) -> Res<ExitCode> {
             for e in &r.entries {
                 let trust = format!("{:?}", Registry::effective_trust(e, n)).to_uppercase();
                 println!(
-                    "{}  {}  {}  {}",
+                    "{}  {}  {}  {}  {}",
                     hex::encode(e.key_id),
                     e.agent_id,
                     trust,
-                    hex::encode(e.public_key)
+                    e.public_key.to_hex(),
+                    e.protection.map(|p| p.as_str()).unwrap_or("-")
                 );
             }
             Ok(ExitCode::SUCCESS)

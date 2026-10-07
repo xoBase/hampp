@@ -14,10 +14,15 @@ path = "src/main.rs"
 hampp-core = { workspace = true }
 hampp-envelope = { workspace = true }
 hampp-session = { workspace = true }
+hampp-tpm = { workspace = true, optional = true }
 clap = { workspace = true }
 hex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[features]
+# TPM-backed keys (protection bound); needs libtss2 to build.
+tpm = ["dep:hampp-tpm"]
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

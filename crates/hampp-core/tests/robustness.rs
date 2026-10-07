@@ -12,13 +12,13 @@ proptest! {
     fn any_text_roundtrips_in_both_carriers(text in "\\PC{0,300}", visible in any::<bool>()) {
         let carrier = if visible { Carrier::Visible } else { Carrier::ZeroWidth };
         let msg = sign_text(&alice(), &text, &SignParams::lite(5), carrier);
-        let v = verify_text(&msg, &SingleKey(alice().identity.public_key), 5);
+        let v = verify_text(&msg, &SingleKey(alice().identity.public_key.into()), 5);
         prop_assert_eq!(v.code(), "authenticated:signed-by-agent");
     }
 
     #[test]
     fn random_input_never_panics_and_is_never_authenticated(text in "\\PC{0,400}") {
-        let v = verify_text(&text, &SingleKey(alice().identity.public_key), 5);
+        let v = verify_text(&text, &SingleKey(alice().identity.public_key.into()), 5);
         prop_assert_ne!(v.status, Status::Authenticated);
     }
 
@@ -26,8 +26,15 @@ proptest! {
     fn alphabet_soup_never_panics(chars in proptest::collection::vec(
         prop::sample::select(vec!['\u{200B}','\u{200C}','\u{200D}','\u{2060}','\u{2063}','\u{2064}','a',']','[','\n']), 0..600)) {
         let s: String = chars.into_iter().collect();
-        let v = verify_text(&s, &SingleKey(alice().identity.public_key), 5);
+        let v = verify_text(&s, &SingleKey(alice().identity.public_key.into()), 5);
         prop_assert_ne!(v.status, Status::Authenticated);
+    }
+
+    #[test]
+    fn header_decode_never_panics_and_reencodes_identically(bytes in proptest::collection::vec(any::<u8>(), 0..160)) {
+        if let Ok(h) = Header::decode(&bytes) {
+            prop_assert_eq!(h.encode(), bytes);
+        }
     }
 
     #[test]
@@ -40,7 +47,7 @@ proptest! {
         let alphabet = ['\u{200B}','\u{200C}','\u{200D}','\u{2060}'];
         if chars[idx] == alphabet[repl] { return Ok(()); }
         chars[idx] = alphabet[repl];
-        let v = verify_text(&chars.into_iter().collect::<String>(), &SingleKey(alice().identity.public_key), 5);
+        let v = verify_text(&chars.into_iter().collect::<String>(), &SingleKey(alice().identity.public_key.into()), 5);
         prop_assert_ne!(v.status, Status::Authenticated);
     }
 }
@@ -50,7 +57,7 @@ fn one_megabyte_message_signs_and_verifies_quickly() {
     let big = "ä".repeat(500_000);
     let t = std::time::Instant::now();
     let msg = sign_text(&alice(), &big, &SignParams::lite(5), Carrier::ZeroWidth);
-    let v = verify_text(&msg, &SingleKey(alice().identity.public_key), 5);
+    let v = verify_text(&msg, &SingleKey(alice().identity.public_key.into()), 5);
     assert_eq!(v.code(), "authenticated:signed-by-agent");
     assert!(t.elapsed().as_secs() < 5);
 }

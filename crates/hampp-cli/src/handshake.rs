@@ -91,7 +91,17 @@ pub fn run(cmd: HsCmd) -> Res<ExitCode> {
             .load()?;
             let h: Hello = read_json(&hello)?;
             let r: HelloResponse = read_json(&response)?;
-            let pin = expect_peer.map(|s| parse_pubkey(&s)).transpose()?;
+            let pin = expect_peer
+                .map(|s| -> crate::io::Res<[u8; 32]> {
+                    match parse_pubkey(&s)? {
+                        hampp_core::PublicKey::Ed25519(k) => Ok(k),
+                        hampp_core::PublicKey::P256(_) => Err(
+                            "sessions support Ed25519 keys only (suite 1); a P-256 peer key cannot be pinned here"
+                                .into(),
+                        ),
+                    }
+                })
+                .transpose()?;
             let (auth, session) = initiate_finish(&id, &h, &r, pin)?;
             write_state(&session_out, &serde_json::to_string_pretty(&session)?)?;
             eprintln!("session {}", hex::encode(session.id));

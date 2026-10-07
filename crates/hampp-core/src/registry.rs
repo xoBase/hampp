@@ -1,4 +1,7 @@
-use crate::{hexfmt, io_ctx, write_atomic, Identity, KeyResolver, ResolvedKey, TrustState};
+use crate::{
+    hexfmt, io_ctx, write_atomic, Identity, KeyResolver, Protection, PublicKey, ResolvedKey,
+    TrustState,
+};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -20,10 +23,13 @@ pub struct Entry {
     #[serde(with = "hexfmt")]
     pub key_id: [u8; 8],
     #[serde(with = "hexfmt")]
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
     pub trust: TrustState,
     pub first_seen: u64,
     pub expires: Option<u64>,
+    /// Protection this receiver is willing to attribute to the key (never taken from a message).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protection: Option<Protection>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -54,9 +60,29 @@ impl Registry {
         now: u64,
         expires: Option<u64>,
     ) -> Result<(), RegistryError> {
-        let key_id = id.key_id();
+        self.add_key(
+            &id.agent_id,
+            id.instance_id,
+            PublicKey::Ed25519(id.public_key),
+            trust,
+            now,
+            expires,
+        )
+    }
+
+    /// Adds or updates the entry for any public key (either suite).
+    pub fn add_key(
+        &mut self,
+        agent_id: &str,
+        instance_id: [u8; 16],
+        public_key: PublicKey,
+        trust: TrustState,
+        now: u64,
+        expires: Option<u64>,
+    ) -> Result<(), RegistryError> {
+        let key_id = public_key.key_id();
         if let Some(e) = self.entries.iter_mut().find(|e| e.key_id == key_id) {
-            if e.public_key != id.public_key {
+            if e.public_key != public_key {
                 return Err(RegistryError::KeyIdConflict);
             }
             e.trust = trust;
@@ -64,15 +90,27 @@ impl Registry {
             return Ok(());
         }
         self.entries.push(Entry {
-            agent_id: id.agent_id.clone(),
-            instance_id: id.instance_id,
+            agent_id: agent_id.to_string(),
+            instance_id,
             key_id,
-            public_key: id.public_key,
+            public_key,
             trust,
             first_seen: now,
             expires,
+            protection: None,
         });
         Ok(())
+    }
+
+    /// Records the protection this receiver attributes to a key; `false` if the key is unknown.
+    pub fn set_protection(&mut self, key_id: &[u8; 8], protection: Option<Protection>) -> bool {
+        match self.entries.iter_mut().find(|e| &e.key_id == key_id) {
+            Some(e) => {
+                e.protection = protection;
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn set_trust(&mut self, key_id: &[u8; 8], trust: TrustState) -> bool {
@@ -99,10 +137,11 @@ impl KeyResolver for Registry {
             .iter()
             .find(|e| &e.key_id == key_id)
             .map(|e| ResolvedKey {
-                public_key: e.public_key,
+                public_key: e.public_key.clone(),
                 agent_id: Some(e.agent_id.clone()),
                 instance_id: Some(e.instance_id),
                 trust: Some(Registry::effective_trust(e, now)),
+                protection: e.protection,
             })
     }
 }

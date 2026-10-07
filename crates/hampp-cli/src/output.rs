@@ -43,7 +43,18 @@ pub fn print_human(v: &Verdict) {
         }
         println!("Timestamp:    {} ({})", h.timestamp, iso8601(h.timestamp));
     }
-    println!("Hardware:     SOFTWARE_ONLY (no hardware claim in the envelope)");
+    match v.protection {
+        Some(p) => println!(
+            "Protection:   {}{}",
+            p.level.label(),
+            if p.claimed && p.level > hampp_core::Protection::Software {
+                " (claimed, not verified)"
+            } else {
+                ""
+            }
+        ),
+        None => println!("Protection:   unknown (no authenticated message)"),
+    }
     for n in &v.notes {
         println!("Note:         {n}");
     }

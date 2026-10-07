@@ -1,6 +1,6 @@
 use hampp_core::{
-    hexfmt, message_hash, payload_hash, render, sign_header, verify_text, Carrier, Level, Reason,
-    SignParams, SigningIdentity, SingleKey, Status, Verdict,
+    hexfmt, message_hash, payload_hash, render, sign_header, verify_text, Carrier, Level,
+    Protection, Reason, SignParams, SigningIdentity, SingleKey, Status, Verdict,
 };
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +51,7 @@ impl Session {
             seq: self.out_seq,
             timestamp: now,
             prev_hash: self.out_prev,
+            protection: Protection::Software,
         };
         let h = sign_header(id, text, &p);
         self.out_prev
@@ -61,7 +62,7 @@ impl Session {
     /// Verifies the signature with the peer key and the session rules. State only
     /// advances for authenticated messages.
     pub fn verify_next(&mut self, text: &str, now: u64) -> Verdict {
-        let mut v = verify_text(text, &SingleKey(self.peer_public_key), now);
+        let mut v = verify_text(text, &SingleKey(self.peer_public_key.into()), now);
         if v.status != Status::Authenticated {
             return v;
         }

@@ -14,6 +14,25 @@
 Each byte becomes four symbols, most significant bit pair first. The carrier is
 `START symbols(len(u16 BE) | payload | crc16(u16 BE)) END`, appended to the visible text.
 A ~110 byte header therefore costs about 460 invisible characters.
+
+## Size overhead
+
+Measured on 2026-10-06 with `hampp` 0.1.1, Lite profile (no session). The overhead is constant: it does not depend on
+the length of the text.
+
+| Carrier | Added characters | Added bytes (UTF-8) | 42-byte text becomes | 1074-byte text becomes |
+|---|---|---|---|---|
+| zero-width (default) | 446 | 1338 | 1381 bytes | 2413 bytes |
+| `--visible` | 227 | 227 | 270 bytes | 1302 bytes |
+
+ECDSA P-256 signatures (suite 2) are also 64 bytes, so the overhead is identical: checked on 2026-10-07 with `hampp` 0.4.0, a 1-byte
+text becomes 1339 bytes (zero-width) with either suite.
+
+Each zero-width character takes 3 bytes in UTF-8 and carries 2 bits, so the default carrier costs about 12 bytes
+per payload byte; the visible fallback costs 2 (hex). Token cost was **not measured**: some tokenizers may split
+zero-width characters into several tokens each, so the real cost for an LLM can be higher than the byte count
+suggests. Measure it with your own tokenizer before relying on it. Overhead with a session (Full profile) is also not
+measured yet.
 CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) covers `len | payload`.
 
 ## Measured offline

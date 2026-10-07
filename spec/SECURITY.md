@@ -13,7 +13,7 @@
 | Anonymity | **no** | The envelope contains a key id that links all messages of a key. |
 | Agent identity | via registry | `agent_id` is a label until a registry entry or a trusted exchange binds it to a key. |
 | Instance identity | via registry/handshake | `instance_id` comes from the handshake or registry, not from the envelope. |
-| Hardware identity | **none in v0.1** | No hardware claim is emitted; the inspector prints `SOFTWARE_ONLY`. See `HARDWARE_BINDING.md`. |
+| Key protection | claimed only | The envelope carries a protection level (`software`, `bound`, `attested`). Without verified evidence it is a claim of the sender; the receiver caps it by its registry and can require a minimum. See `HARDWARE_BINDING.md`. |
 
 ## What a result means
 
@@ -28,8 +28,8 @@
 The private key is stored as **plaintext hex in a JSON file** (`hampp keygen`, `FileKeyStore`). There is no passphrase and no
 encryption at rest. The only protection is the operating system: the file is created with mode 0600, a key file that is accessible by
 group or others is refused, and `keygen` never overwrites an existing key. Anyone who can read the file can sign as that agent, so
-keep it out of backups, repositories and shared directories (`hampp-key.json` is in `.gitignore`). Hardware-backed stores (TPM, HSM)
-are a future implementation of the `KeyStore` trait; see `HARDWARE_BINDING.md`.
+keep it out of backups, repositories and shared directories (`hampp-key.json` is in `.gitignore`). Hardware-backed keys (TPM) are `Signer` implementations
+with their own key file that holds only a TPM-wrapped blob; see `HARDWARE_BINDING.md`.
 
 State files (session files, registry) are written atomically (temp file plus rename) and contain no private key material.
 

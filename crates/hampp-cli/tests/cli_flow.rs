@@ -119,7 +119,7 @@ fn inspect_needs_no_key_and_claims_nothing() {
         .assert()
         .code(0)
         .stdout(predicates::str::contains("Protocol:"))
-        .stdout(predicates::str::contains("SOFTWARE_ONLY"))
+        .stdout(predicates::str::contains("Protection:   SOFTWARE"))
         .stdout(predicates::str::contains("not verified"));
     hampp()
         .arg("inspect")
@@ -396,4 +396,245 @@ fn session_state_files_are_written_atomically_without_leftovers() {
     let s: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(p("a.session")).unwrap()).unwrap();
     assert_eq!(s["out_seq"], 2);
+}
+
+#[test]
+fn capabilities_json_reports_software_only_build() {
+    let out = hampp().args(["capabilities", "--json"]).output().unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["protocol_versions"], serde_json::json!([1]));
+    assert_eq!(v["suites"], serde_json::json!([1, 2]));
+    // the default build has no TPM support; a build with the `tpm` feature has its own test
+    if !cfg!(feature = "tpm") {
+        assert_eq!(v["key_protection"], serde_json::json!(["software"]));
+        assert_eq!(v["protection"]["bound"]["available"], false);
+    }
+    assert_eq!(v["protection"]["software"]["available"], true);
+    assert_eq!(v["protection"]["attested"]["available"], false);
+    assert!(v["protection"]["attested"]["reason"].is_string());
+    assert_eq!(v["attestation"], serde_json::json!([]));
+}
+
+#[test]
+fn identity_json_states_software_protection_and_no_attestation() {
+    let dir = tempfile::tempdir().unwrap();
+    let (key, public) = keygen(dir.path(), "alice");
+    let out = hampp()
+        .args(["identity", "--key", &key, "--json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["public_key"], public);
+    assert_eq!(v["key_protection"], "software");
+    assert_eq!(v["attestation"], "none");
+    assert!(
+        v.get("secret").is_none(),
+        "the JSON must never contain the secret"
+    );
+}
+
+#[test]
+fn skill_frontmatter_is_portable_across_harnesses() {
+    // name must equal the directory name; OpenClaw only parses single-line frontmatter keys.
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../skills/hampp/SKILL.md");
+    let s = std::fs::read_to_string(p).unwrap();
+    let fm: Vec<&str> = s
+        .strip_prefix("---\n")
+        .and_then(|r| r.split("\n---\n").next())
+        .expect("frontmatter")
+        .lines()
+        .collect();
+    assert_eq!(fm.len(), 2, "only name and description: {fm:?}");
+    assert_eq!(fm[0], "name: hampp");
+    let d = fm[1].strip_prefix("description: ").expect("description");
+    assert!(!d.is_empty() && d.len() <= 1024);
+}
+
+fn keygen_p256(dir: &Path, name: &str) -> (String, String) {
+    let key = dir.join(format!("{name}.json")).display().to_string();
+    hampp()
+        .args([
+            "keygen",
+            "--agent",
+            name,
+            "--key",
+            &key,
+            "--alg",
+            "ecdsa-p256",
+        ])
+        .assert()
+        .success();
+    let out = hampp()
+        .args(["identity", "--key", &key, "--public"])
+        .output()
+        .unwrap();
+    (
+        key,
+        String::from_utf8(out.stdout).unwrap().trim().to_string(),
+    )
+}
+
+#[test]
+fn p256_software_key_signs_and_verifies_with_exit_codes() {
+    let dir = tempfile::tempdir().unwrap();
+    let (key, public) = keygen_p256(dir.path(), "pat");
+    assert_eq!(public.len(), 66, "compressed P-256 point as hex");
+    let msg = sign(&key, "hallo", &[]);
+    hampp()
+        .args(["verify", "--pubkey", &public, "--json"])
+        .write_stdin(msg.clone())
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains("authenticated:signed-by-agent"));
+    hampp()
+        .args(["verify", "--pubkey", &public])
+        .write_stdin(msg.replace("hallo", "hullo"))
+        .assert()
+        .code(20);
+    let id = hampp()
+        .args(["identity", "--key", &key, "--json"])
+        .output()
+        .unwrap();
+    let v: serde_json::Value = serde_json::from_slice(&id.stdout).unwrap();
+    assert_eq!(v["suite"], 2);
+    assert_eq!(v["max_protection"], "software");
+    assert_eq!(v["key_protection"], "software");
+}
+
+#[test]
+fn sign_above_key_protection_fails_without_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let (key, _) = keygen(dir.path(), "alice");
+    hampp()
+        .args(["sign", "--key", &key, "--protection", "bound"])
+        .write_stdin("hi")
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("not available"));
+}
+
+#[test]
+fn min_protection_gives_exit_10_and_the_reason() {
+    let dir = tempfile::tempdir().unwrap();
+    let (key, public) = keygen(dir.path(), "alice");
+    let msg = sign(&key, "hi", &[]);
+    hampp()
+        .args([
+            "verify",
+            "--pubkey",
+            &public,
+            "--min-protection",
+            "bound",
+            "--json",
+        ])
+        .write_stdin(msg.clone())
+        .assert()
+        .code(10)
+        .stdout(predicates::str::contains("unverified:protection-too-low"));
+    hampp()
+        .args([
+            "verify",
+            "--pubkey",
+            &public,
+            "--min-protection",
+            "software",
+        ])
+        .write_stdin(msg)
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains("Protection:   SOFTWARE"));
+}
+
+#[test]
+fn registry_add_protection_roundtrips_and_old_registry_loads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_k, public) = keygen_p256(dir.path(), "pat");
+    let reg = dir.path().join("reg.json").display().to_string();
+    hampp()
+        .args([
+            "registry", "add", "--file", &reg, "--pubkey", &public, "--agent", "pat",
+        ])
+        .args(["--trust", "trusted", "--protection", "bound"])
+        .assert()
+        .success();
+    hampp()
+        .args(["registry", "list", "--file", &reg])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("bound"));
+    // an old-format registry (no protection field, Ed25519 key) still loads
+    let old = dir.path().join("old.json");
+    std::fs::write(
+        &old,
+        r#"{"entries":[{"agent_id":"a","instance_id":"00000000000000000000000000000000",
+        "key_id":"0000000000000000","public_key":"0909090909090909090909090909090909090909090909090909090909090909",
+        "trust":"TRUSTED","first_seen":1,"expires":null}]}"#,
+    )
+    .unwrap();
+    hampp()
+        .args(["registry", "list", "--file", &old.display().to_string()])
+        .assert()
+        .success()
+        .stdout(predicates::str::ends_with("-\n"));
+}
+
+#[test]
+fn registry_caps_what_a_sender_claims_in_the_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_k, public) = keygen_p256(dir.path(), "pat");
+    let reg = dir.path().join("reg.json").display().to_string();
+    hampp()
+        .args([
+            "registry", "add", "--file", &reg, "--pubkey", &public, "--agent", "pat",
+        ])
+        .args(["--trust", "trusted", "--protection", "software"])
+        .assert()
+        .success();
+    // a software key can only claim software, so the cap shows as "registry-known" (not claimed)
+    let key = dir.path().join("pat.json").display().to_string();
+    let msg = sign(&key, "hi", &[]);
+    hampp()
+        .args(["verify", "--registry", &reg, "--json"])
+        .write_stdin(msg)
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains("\"protection_claimed\": false"));
+}
+
+#[test]
+fn sessions_refuse_p256_keys_clearly() {
+    let dir = tempfile::tempdir().unwrap();
+    let (key, _) = keygen_p256(dir.path(), "pat");
+    let session = dir.path().join("s.session").display().to_string();
+    hampp()
+        .args(["sign", "--key", &key, "--session", &session])
+        .write_stdin("hi")
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("Ed25519 keys only"));
+}
+
+#[test]
+fn tpm_key_file_without_tpm_support_gives_a_clear_error() {
+    if cfg!(feature = "tpm") {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let key = dir.path().join("t.json");
+    std::fs::write(&key, r#"{"alg":"ecdsa-p256-tpm","agent_id":"t"}"#).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    hampp()
+        .args(["sign", "--key", &key.display().to_string()])
+        .write_stdin("hi")
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("without tpm support"));
 }
