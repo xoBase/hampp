@@ -112,7 +112,8 @@ instruction text for your agent: install only a copy you have reviewed (pin a re
 - `hampp-sim`: simulated agents plus attack and transport scenarios in [`scenarios/`](scenarios/); `cargo test -p hampp-sim`.
 - Test vectors in [`spec/vectors/`](spec/vectors/) and an independent Python verifier that does not use the Rust code:
   `uv run --with cryptography python spec/vectors/verify_vectors.py spec/vectors/lite.json`
-  (also `--handshake handshake.json`, `--handshake-p256 handshake_p256.json` and `--protection protection.json`).
+  (also `--handshake spec/vectors/handshake.json`, `--handshake-p256 spec/vectors/handshake_p256.json` and
+  `--protection spec/vectors/protection.json`).
 
 ## Status and limits
 
@@ -133,7 +134,7 @@ to submit a reproducible attack (a scenario file is enough). Security reports: [
 ## Build another implementation
 
 [spec/PROTOCOL.md](spec/PROTOCOL.md) is normative; [spec/vectors/](spec/vectors/) is the conformance suite, and
-`spec/vectors/verify_vectors.py` is a complete independent verifier in under 300 lines. An implementation that passes the vectors
+`spec/vectors/verify_vectors.py` is a complete independent verifier in about 350 lines. An implementation that passes the vectors
 interoperates with HAMPP/1. A different design is just as welcome, but please give an incompatible protocol its own label rather
 than "HAMPP/1".
 

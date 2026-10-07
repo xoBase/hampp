@@ -11,7 +11,7 @@ body:
     id: idea
     attributes:
       label: What would be tested
-      description: A concrete experiment. Note what HAMPP does not provide (v0.1 has no hardware binding, no confidentiality, no authorization).
+      description: A concrete experiment. Note what HAMPP does not provide (HAMPP has no verified hardware attestation, no confidentiality, no authorization).
     validations: { required: true }
   - type: textarea
     id: result

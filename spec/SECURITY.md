@@ -2,7 +2,7 @@
 
 **Status: experimental, not audited, not encryption.**
 
-| Property | HAMPP/1 v0.1 | Notes |
+| Property | HAMPP/1 | Notes |
 |---|---|---|
 | Authenticity | yes, per key | The signature proves that the holder of a private key signed exactly this text. |
 | Integrity | yes | Any change to the visible text or the envelope makes verification fail (`invalid:signature-invalid`). |
@@ -23,7 +23,7 @@
 - `unverified:*`: no usable proof (envelope stripped, corrupt, or key unknown). It is not evidence of forgery.
 - `invalid:*`: proof present but wrong, or the key is revoked/expired.
 
-## Key storage (v0.1)
+## Key storage
 
 The private key is stored as **plaintext hex in a JSON file** (`hampp keygen`, `FileKeyStore`). There is no passphrase and no
 encryption at rest. The only protection is the operating system: the file is created with mode 0600, a key file that is accessible by
@@ -38,4 +38,4 @@ State files (session files, registry) are written atomically (temp file plus ren
 - The LLM's token selection is never modified; signing happens after generation.
 - Removing the envelope is not an attack on the protocol; it only loses the proof.
 - Private keys are stored with mode 0600 and a key file readable by others is refused. Keys are never overwritten by `keygen`.
-- The cryptography is Ed25519 and SHA-256 from audited-in-the-wild crates; HAMPP itself has not been audited.
+- The cryptography is Ed25519, ECDSA P-256 and SHA-256 from widely used crates (RustCrypto, `ed25519-dalek`) or from a TPM; HAMPP itself has not been audited.

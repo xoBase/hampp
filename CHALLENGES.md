@@ -9,7 +9,7 @@ A **vulnerability** is any input for which an implementation here:
 
 - reports `authenticated:*` although the message was not signed by the key that was checked, was altered, or (in the Full profile) was replayed, reordered into acceptance, or injected into another session;
 - panics, hangs, or uses unbounded time or memory on any text input (the decoder must fail closed);
-- claims more than it proved (for example a hardware claim: v0.1 emits none, so any `HARDWARE-*` output is a bug);
+- claims more than it proved (for example a protection level shown as verified although no evidence was checked: `bound` and `attested` are always reported as `claimed` unless the receiver's registry records the key);
 - lets a message text forge the sidecar status line produced by `hampp annotate`.
 
 A **known limitation** is not a vulnerability, but a better answer to one is very welcome (see `spec/THREAT_MODEL.md`):
@@ -26,8 +26,8 @@ an attacker can always strip the envelope (the result is then `unverified`, by d
 | Can you strip the envelope and still get `authenticated`? | `scenarios/04_strip_zw.toml`, `05_sanitizer.toml` | any output other than `unverified:envelope-missing` for a stripped message |
 | Can Unicode normalisation destroy provenance silently? | `scenarios/06_normalisation.toml`, `crates/hampp-sim/tests/transport_matrix.rs` | a transform changes the verdict in a way the verifier does not report |
 | Can you make a message claim a protection level its key does not have, or lower a receiver's `--min-protection` policy? | `scenarios/16_*`, `19_*`, `crates/hampp-core/tests/protection_vectors.rs` | a `bound` message or a policy pass that should have been refused or downgraded |
-| Can an instance be cloned? | not preventable in v0.1 | a way to detect or limit it without hardware attestation |
-| Can a copied key be told from the original agent? | not preventable in v0.1 | same as above |
+| Can an instance be cloned? | not preventable at present | a way to detect or limit it without hardware attestation |
+| Can a copied key be told from the original agent? | not preventable at present | same as above |
 | Can you reduce the overhead? | measured: **446 invisible characters (1338 bytes UTF-8) per message**, independent of the text length | a smaller encoding that survives the same transports |
 | Can you design a better encoding? | `spec/UNICODE_ENCODING.md` | one that passes `spec/vectors/` or a documented successor to them |
 

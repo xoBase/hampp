@@ -24,6 +24,8 @@ seq (varint) | timestamp (varint) | prev_hash (16) | signature (64)
 - `suite`: 1 = Ed25519 + SHA-256; 2 = ECDSA P-256 + SHA-256. Other values: `unsupported-suite`.
 - `key_id`: suite 1 = first 8 bytes of SHA-256(public key, 32 bytes); suite 2 = first 8 bytes of SHA-256(SEC1 compressed point, 33 bytes).
   The input lengths differ, so a key id never collides across suites. `session_id` is 8 zero bytes for sessionless (Lite) messages.
+- Suite 2 public key: the 33-byte SEC1 *compressed* point (first byte 0x02 or 0x03) and no other spelling. A key with another tag (for example 0x05, or an
+  uncompressed point) is not a valid HAMPP key, so a key has exactly one hex form and one `key_id`.
 - Suite 2 signature: raw `r || s`, each 32 bytes big-endian, 64 bytes in total (same size as suite 1). `s` MUST be low (`s <= n/2`);
   signers normalise `s -> n - s` and verifiers MUST reject a high `s` (the signature feeds `prev_hash`, so its form must be unique).
 - `varint`: unsigned LEB128, at most 10 bytes, canonical form only (no redundant trailing zero group).
