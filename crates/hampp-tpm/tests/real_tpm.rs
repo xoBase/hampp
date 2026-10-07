@@ -40,6 +40,7 @@ fn real_tpm_creates_signs_and_leaves_no_handles_behind() {
     }
     // the key file loads again on the same TPM
     let again = TpmSigner::load(&file, None).unwrap();
+    again.check_loadable().unwrap();
     assert_eq!(again.public_key(), signer.public_key());
 
     assert_eq!(

@@ -132,8 +132,10 @@ fn no_fallback_when_the_tpm_is_unreachable() {
         TpmSigner::create("x", Some(&dead)),
         Err(TpmError::Unavailable(_))
     ));
+    // loading a key file is cheap and does not touch the TPM; using it does
+    let unreachable = TpmSigner::load(&file, Some(&dead)).unwrap();
     assert!(matches!(
-        TpmSigner::load(&file, Some(&dead)),
+        unreachable.check_loadable(),
         Err(TpmError::Unavailable(_))
     ));
     assert!(probe(Some(&dead)).is_err());
@@ -150,10 +152,12 @@ fn key_blob_from_another_tpm_is_not_loadable() {
         return;
     };
     let (_s, file) = TpmSigner::create("tpm-agent", Some(&a.tcti)).unwrap();
-    let err = TpmSigner::load(&file, Some(&b.tcti))
-        .err()
-        .expect("must not load");
+    let foreign = TpmSigner::load(&file, Some(&b.tcti)).unwrap();
+    let err = foreign.check_loadable().expect_err("must not load");
     assert!(matches!(err, TpmError::NotLoadable(_)), "{err}");
+    // and it must not sign either
+    let err = try_sign_text(&foreign, "hi", &bound_params(), Carrier::ZeroWidth).unwrap_err();
+    assert!(matches!(err, SignError::Backend(_)), "{err}");
 }
 
 fn tpm2_getcap(tcti: &str, what: &str) -> Option<String> {
@@ -182,7 +186,10 @@ fn no_transient_handles_left_and_persistent_handles_untouched() {
         )
         .unwrap();
     }
-    TpmSigner::load(&file, Some(&tpm.tcti)).unwrap();
+    TpmSigner::load(&file, Some(&tpm.tcti))
+        .unwrap()
+        .check_loadable()
+        .unwrap();
     assert_eq!(
         tpm2_getcap(&tpm.tcti, "handles-transient").unwrap().trim(),
         ""

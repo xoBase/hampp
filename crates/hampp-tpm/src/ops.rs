@@ -172,7 +172,8 @@ impl TpmSigner {
         Ok((signer, file))
     }
 
-    /// Loads a key file. Fails with `NotLoadable` when this TPM did not create the blob.
+    /// Parses a key file. Does not contact the TPM (see `check_loadable`); a blob that this TPM
+    /// did not create fails with `NotLoadable` when it is first used.
     pub fn load(file: &KeyFileJson, tcti: Option<&str>) -> Result<TpmSigner, TpmError> {
         if file.alg != ALG {
             return Err(TpmError::Format(format!(
@@ -196,28 +197,38 @@ impl TpmSigner {
         let instance_id: [u8; 16] = unhex(&file.instance_id, "instance_id")?
             .try_into()
             .map_err(|_| TpmError::Format("instance_id must be 16 bytes".into()))?;
-        let signer = TpmSigner {
+        Ok(TpmSigner {
             agent_id: file.agent_id.clone(),
             instance_id,
             public,
             tpm_public,
             tpm_private,
             tcti: tcti.map(str::to_string),
-        };
-        // Prove now that this TPM can load the blob, instead of failing at the first signature.
-        let mut ctx = open(tcti)?;
+        })
+    }
+
+    /// Proves that this TPM can load the key blob. Costs one primary-key creation (about
+    /// 350 ms on a firmware TPM), so `load` does not do it: signing fails with the same
+    /// error at the first use, and reading the public key needs no TPM at all.
+    pub fn check_loadable(&self) -> Result<(), TpmError> {
+        self.with_loaded_key(|_, _| Ok(()))
+    }
+
+    /// Opens the TPM, recreates the primary, loads the key blob under it, runs `f`, and flushes
+    /// everything again, also on errors. The one place that knows how a key is loaded.
+    fn with_loaded_key<T>(
+        &self,
+        f: impl FnOnce(&mut Context, KeyHandle) -> Result<T, TpmError>,
+    ) -> Result<T, TpmError> {
+        let mut ctx = open(self.tcti.as_deref())?;
         with_primary(&mut ctx, |ctx, primary| {
             let key = ctx
-                .load(
-                    primary,
-                    signer.tpm_private.clone(),
-                    signer.tpm_public.clone(),
-                )
+                .load(primary, self.tpm_private.clone(), self.tpm_public.clone())
                 .map_err(|e| TpmError::NotLoadable(e.to_string()))?;
+            let r = f(ctx, key);
             let _ = ctx.flush_context(key.into());
-            Ok(())
-        })?;
-        Ok(signer)
+            r
+        })
     }
 
     pub fn to_key_file(&self) -> Result<KeyFileJson, TpmError> {
@@ -233,30 +244,25 @@ impl TpmSigner {
 
     fn sign_inner(&self, msg: &[u8]) -> Result<[u8; 64], TpmError> {
         let digest = Digest::try_from(Sha256::digest(msg).to_vec())?;
-        let mut ctx = open(self.tcti.as_deref())?;
-        with_primary(&mut ctx, |ctx, primary| {
-            let key = ctx
-                .load(primary, self.tpm_private.clone(), self.tpm_public.clone())
-                .map_err(|e| TpmError::NotLoadable(e.to_string()))?;
-            let sig = ctx.sign(
+        let sig = self.with_loaded_key(|ctx, key| {
+            Ok(ctx.sign(
                 key,
                 digest,
                 SignatureScheme::EcDsa {
                     hash_scheme: HashScheme::new(HashingAlgorithm::Sha256),
                 },
                 null_ticket()?,
-            );
-            let _ = ctx.flush_context(key.into());
-            let Signature::EcDsa(sig) = sig? else {
-                return Err(TpmError::Tpm("TPM returned a non-ECDSA signature".into()));
-            };
-            let mut raw = [0u8; 64];
-            raw[..32].copy_from_slice(&pad32(sig.signature_r().value())?);
-            raw[32..].copy_from_slice(&pad32(sig.signature_s().value())?);
-            // About half of all TPM signatures have a high s; the protocol requires a low one.
-            normalize_low_s(&raw)
-                .ok_or_else(|| TpmError::Tpm("TPM returned an invalid signature".into()))
-        })
+            )?)
+        })?;
+        let Signature::EcDsa(sig) = sig else {
+            return Err(TpmError::Tpm("TPM returned a non-ECDSA signature".into()));
+        };
+        let mut raw = [0u8; 64];
+        raw[..32].copy_from_slice(&pad32(sig.signature_r().value())?);
+        raw[32..].copy_from_slice(&pad32(sig.signature_s().value())?);
+        // About half of all TPM signatures have a high s; the protocol requires a low one.
+        normalize_low_s(&raw)
+            .ok_or_else(|| TpmError::Tpm("TPM returned an invalid signature".into()))
     }
 }
 
