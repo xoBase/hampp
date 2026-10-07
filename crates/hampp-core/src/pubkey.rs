@@ -47,11 +47,15 @@ impl PublicKey {
         }
     }
 
-    /// 32 bytes = Ed25519 (not validated here, like before), 33 bytes = a valid P-256 point.
+    /// 32 bytes = Ed25519 (not validated here, like before), 33 bytes = a valid P-256 point in
+    /// SEC1 compressed form (tag 2 or 3). The point has one spelling only: the SEC1 library also
+    /// reads tag 5 ("compact"), which would give the same key a second hex form and `key_id`.
     pub fn from_slice(b: &[u8]) -> Option<PublicKey> {
         match b.len() {
             32 => Some(PublicKey::Ed25519(b.try_into().ok()?)),
-            33 if p256sw::is_valid_point(b) => Some(PublicKey::P256(b.try_into().ok()?)),
+            33 if matches!(b[0], 2 | 3) && p256sw::is_valid_point(b) => {
+                Some(PublicKey::P256(b.try_into().ok()?))
+            }
             _ => None,
         }
     }
@@ -117,6 +121,20 @@ mod tests {
         let high = crate::p256sw::flip_s(&sig);
         assert_ne!(high, sig);
         assert!(!verify_signature(&k.public_key(), b"m", &high));
+    }
+
+    #[test]
+    fn a_p256_key_has_exactly_one_spelling_the_compressed_point() {
+        let good = key().public_key();
+        let bytes = good.as_bytes().to_vec();
+        assert!(bytes[0] == 2 || bytes[0] == 3);
+        assert_eq!(PublicKey::from_slice(&bytes), Some(good));
+        // other SEC1 tags (e.g. 0x05, "compact") may decode to the same point but are no valid key here
+        for tag in [0u8, 1, 4, 5, 6, 7, 0xff] {
+            let mut alias = bytes.clone();
+            alias[0] = tag;
+            assert_eq!(PublicKey::from_slice(&alias), None, "tag {tag:#04x}");
+        }
     }
 
     #[test]
