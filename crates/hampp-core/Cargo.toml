@@ -17,6 +17,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 
+[features]
+# Test code only: lets a software key claim a higher protection level (see `P256Software`).
+test-support = []
+
 [dev-dependencies]
+# Self dev-dependency: turns the feature on for this crate's own tests, never for dependents.
+hampp-core = { path = ".", features = ["test-support"] }
 proptest = { workspace = true }
 tempfile = { workspace = true }

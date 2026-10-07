@@ -16,4 +16,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+hampp-core = { workspace = true, features = ["test-support"] }
 hampp-envelope = { workspace = true }

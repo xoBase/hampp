@@ -513,6 +513,7 @@ name = "hampp-core"
 version = "0.4.0"
 dependencies = [
  "ed25519-dalek",
+ "hampp-core",
  "hampp-envelope",
  "hex",
  "p256",

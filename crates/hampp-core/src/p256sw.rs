@@ -92,8 +92,9 @@ impl P256Software {
         sig.normalize_s().unwrap_or(sig).to_bytes().into()
     }
 
-    /// Test vectors only: lets a software key claim a higher level, which real key stores never do.
-    #[doc(hidden)]
+    /// Test vectors only (feature `test-support`): lets a software key claim a higher level,
+    /// which real key stores never do. Not compiled into normal builds.
+    #[cfg(feature = "test-support")]
     pub fn claim_level_for_tests(mut self, level: crate::Protection) -> Self {
         self.level = level;
         self
