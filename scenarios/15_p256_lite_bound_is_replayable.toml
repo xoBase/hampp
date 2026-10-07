@@ -1,0 +1,24 @@
+name = "documented limit: in Lite mode even a bound message can be re-posted by anyone"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+level = "bound"
+[[agents]]
+name = "bob"
+key = "ecdsa-p256"
+level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+mode = "lite"
+protection = "bound"
+text = "Zahle 100 Euro"
+expect = "authenticated:signed-by-agent"
+expect_level = "bound"
+# Lite has no replay protection (spec/SECURITY.md): this is why consequential messages belong in a session.
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 0
+mode = "lite"
+expect = "authenticated:signed-by-agent"

@@ -1,0 +1,30 @@
+name = "suite 2 session: the protection level is chosen per message and arrives as claimed"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+level = "bound"
+[[agents]]
+name = "bob"
+key = "ecdsa-p256"
+level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "bound"
+text = "Überweisung freigegeben."
+expect = "authenticated:registered-instance"
+expect_level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "software"
+text = "Routine-Statusmeldung."
+expect = "authenticated:registered-instance"
+expect_level = "software"
+[[steps]]
+from = "bob"
+to = "alice"
+protection = "bound"
+text = "Bestätigt."
+expect = "authenticated:registered-instance"
+expect_level = "bound"

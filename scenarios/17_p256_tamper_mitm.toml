@@ -1,0 +1,16 @@
+name = "suite 2: a man in the middle edits a bound message"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+level = "bound"
+[[agents]]
+name = "bob"
+key = "ecdsa-p256"
+level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "bound"
+text = "Der Auftrag wurde erfolgreich ausgeführt."
+via = ["replace:erfolgreich=erfolglos"]
+expect = "invalid:signature-invalid"

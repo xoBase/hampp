@@ -25,6 +25,7 @@ an attacker can always strip the envelope (the result is then `unverified`, by d
 | Can you replay an authenticated message? | `scenarios/10_replay_duplicate.toml`, `11_reorder_gap.toml` | the Full profile accepts a message twice, or a late one |
 | Can you strip the envelope and still get `authenticated`? | `scenarios/04_strip_zw.toml`, `05_sanitizer.toml` | any output other than `unverified:envelope-missing` for a stripped message |
 | Can Unicode normalisation destroy provenance silently? | `scenarios/06_normalisation.toml`, `crates/hampp-sim/tests/transport_matrix.rs` | a transform changes the verdict in a way the verifier does not report |
+| Can you make a message claim a protection level its key does not have, or lower a receiver's `--min-protection` policy? | `scenarios/16_*`, `19_*`, `crates/hampp-core/tests/protection_vectors.rs` | a `bound` message or a policy pass that should have been refused or downgraded |
 | Can an instance be cloned? | not preventable in v0.1 | a way to detect or limit it without hardware attestation |
 | Can a copied key be told from the original agent? | not preventable in v0.1 | same as above |
 | Can you reduce the overhead? | measured: **446 invisible characters (1338 bytes UTF-8) per message**, independent of the text length | a smaller encoding that survives the same transports |
@@ -56,6 +57,9 @@ expect = "invalid:replay"
 
 Steps can send, hold, deliver late, inject (`kind = "inject"` with `claim`), and pass messages through transports
 (`via = ["nfkc", "json", "replace:old=new", "truncate_tail:5", "drop_zw:10", ...]`, see `crates/hampp-sim/src/channel.rs`).
+Agents can use ECDSA P-256 keys (`key = "ecdsa-p256"`, with `level = "bound"` to let the key claim a hardware level), a step can claim a
+level (`protection = "bound"`), a receiver can require one (`min_protection = "bound"`), and `expect_level` checks what the receiver sees;
+see `scenarios/13_*` to `19_*`. Unknown fields are an error, so a typo cannot make a scenario pass silently.
 Run it with `cargo test -p hampp-sim`. If your attack needs something the simulator cannot express, describe it precisely
 and a failing test in any language is fine.
 

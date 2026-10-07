@@ -1,0 +1,34 @@
+name = "a key cannot claim more protection than it has; there is no silent fallback"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+[[agents]]
+name = "bob"
+[[agents]]
+name = "carol"
+key = "ecdsa-p256"
+level = "bound"
+# alice's P-256 key is software-only: asking for bound is refused
+[[steps]]
+from = "alice"
+to = "carol"
+protection = "bound"
+text = "x"
+expect = "sign-refused"
+# an Ed25519 key never offers more than software
+[[steps]]
+from = "bob"
+to = "carol"
+mode = "lite"
+protection = "bound"
+text = "x"
+expect = "sign-refused"
+# the honest claim works
+[[steps]]
+from = "alice"
+to = "carol"
+mode = "lite"
+protection = "software"
+text = "x"
+expect = "authenticated:signed-by-agent"
+expect_level = "software"

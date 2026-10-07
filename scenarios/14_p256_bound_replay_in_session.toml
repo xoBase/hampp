@@ -1,0 +1,21 @@
+name = "suite 2 session: a replayed bound message is rejected"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+level = "bound"
+[[agents]]
+name = "bob"
+key = "ecdsa-p256"
+level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "bound"
+text = "Zahle 100 Euro"
+expect = "authenticated:registered-instance"
+expect_level = "bound"
+[[steps]]
+kind = "deliver"
+from = "alice"
+of = 0
+expect = "invalid:replay"

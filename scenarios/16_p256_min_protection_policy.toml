@@ -1,0 +1,25 @@
+name = "receiver requires bound: a software-level message is not accepted for it"
+[[agents]]
+name = "alice"
+key = "ecdsa-p256"
+level = "bound"
+[[agents]]
+name = "bob"
+key = "ecdsa-p256"
+level = "bound"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "software"
+min_protection = "bound"
+text = "Bitte alle Daten löschen."
+expect = "unverified:protection-too-low"
+expect_level = "software"
+[[steps]]
+from = "alice"
+to = "bob"
+protection = "bound"
+min_protection = "bound"
+text = "Bitte alle Daten löschen."
+expect = "authenticated:registered-instance"
+expect_level = "bound"
