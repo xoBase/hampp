@@ -1,6 +1,7 @@
 use hampp_core::{
-    hexfmt, message_hash, payload_hash, render, sign_header, verify_text, Carrier, Level,
-    Protection, Reason, SignParams, SigningIdentity, SingleKey, Status, Verdict,
+    hexfmt, message_hash, payload_hash, render, try_sign_header, verify_text, Carrier, Level,
+    Protection, PublicKey, Reason, SignError, SignParams, Signer, SigningIdentity, SingleKey,
+    Status, Verdict,
 };
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +10,7 @@ pub struct Session {
     #[serde(with = "hexfmt")]
     pub id: [u8; 8],
     #[serde(with = "hexfmt")]
-    pub peer_public_key: [u8; 32],
+    pub peer_public_key: PublicKey,
     pub version: u8,
     pub suite: u8,
     pub out_seq: u64,
@@ -24,7 +25,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: [u8; 8], peer_public_key: [u8; 32], version: u8, suite: u8) -> Self {
+    pub fn new(id: [u8; 8], peer_public_key: PublicKey, version: u8, suite: u8) -> Self {
         Session {
             id,
             peer_public_key,
@@ -38,6 +39,38 @@ impl Session {
         }
     }
 
+    /// Signs the next message of this session with any signer of the session's suite, claiming
+    /// `protection` (at most what the signer offers). The session state only advances when the
+    /// signature succeeded, so a failing TPM leaves the session as it was.
+    pub fn try_sign_next(
+        &mut self,
+        signer: &dyn Signer,
+        text: &str,
+        now: u64,
+        carrier: Carrier,
+        protection: Protection,
+    ) -> Result<String, SignError> {
+        if signer.suite() != self.suite {
+            return Err(SignError::SuiteMismatch {
+                signer: signer.suite(),
+                session: self.suite,
+            });
+        }
+        let p = SignParams {
+            session_id: self.id,
+            seq: self.out_seq + 1,
+            timestamp: now,
+            prev_hash: self.out_prev,
+            protection,
+        };
+        let h = try_sign_header(signer, text, &p)?;
+        self.out_seq += 1;
+        self.out_prev
+            .copy_from_slice(&message_hash(&h, &payload_hash(text))[..16]);
+        Ok(render(text, &h, carrier))
+    }
+
+    /// Software Ed25519 identity, protection `software`; cannot fail.
     pub fn sign_next(
         &mut self,
         id: &SigningIdentity,
@@ -45,24 +78,14 @@ impl Session {
         now: u64,
         carrier: Carrier,
     ) -> String {
-        self.out_seq += 1;
-        let p = SignParams {
-            session_id: self.id,
-            seq: self.out_seq,
-            timestamp: now,
-            prev_hash: self.out_prev,
-            protection: Protection::Software,
-        };
-        let h = sign_header(id, text, &p);
-        self.out_prev
-            .copy_from_slice(&message_hash(&h, &payload_hash(text))[..16]);
-        render(text, &h, carrier)
+        self.try_sign_next(id, text, now, carrier, Protection::Software)
+            .expect("a software identity signs at protection software in a suite 1 session")
     }
 
     /// Verifies the signature with the peer key and the session rules. State only
     /// advances for authenticated messages.
     pub fn verify_next(&mut self, text: &str, now: u64) -> Verdict {
-        let mut v = verify_text(text, &SingleKey(self.peer_public_key.into()), now);
+        let mut v = verify_text(text, &SingleKey(self.peer_public_key.clone()), now);
         if v.status != Status::Authenticated {
             return v;
         }

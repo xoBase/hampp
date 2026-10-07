@@ -72,7 +72,7 @@ Reasons: `envelope-missing`, `envelope-corrupt`, `unknown-key`, `unsupported-ver
 ## 5. Handshake (Full profile)
 
 JSON objects with byte fields as lower-case hex. Fields: `HELLO` = versions, suites, caps, agent_id, instance_id (16),
-public_key (32), nonce (32); `HELLO_RESPONSE` = version, suite, caps, agent_id, instance_id, public_key, nonce, signature (64);
+public_key (32 bytes for suite 1, 33 bytes for suite 2), nonce (32); `HELLO_RESPONSE` = version, suite, caps, agent_id, instance_id, public_key, nonce, signature (64);
 `AUTH_RESPONSE` = signature (64). Capabilities: `{tag, critical, value}`.
 
 Transcript hash = SHA-256 of `"HAMPP/1 transcript"` followed by, using `put(b) = u32 BE length || b`:
@@ -80,11 +80,17 @@ HELLO: `put(versions) put(suites) caps put(agent_id) put(instance_id) put(public
 then RESPONSE: `put([version, suite]) caps put(agent_id) put(instance_id) put(public_key) put(nonce)`;
 `caps = put(u32 BE count) { put([tag, critical 0|1]) put(value) }*`.
 
-- B signs `"HAMPP/1 hs B" || transcript`, A signs `"HAMPP/1 hs A" || transcript`.
+- B signs `"HAMPP/1 hs B" || transcript`, A signs `"HAMPP/1 hs A" || transcript`, both with the signature algorithm of the chosen suite
+  (suite 2: ECDSA P-256 over SHA-256 of that input, raw `r || s`, low `s`, as in section 2).
+- **One key, one suite.** Each party has one key and offers only the suite of that key in `suites`. The chosen suite MUST be the suite of both
+  public keys: B fails with no common suite (different key types) or with a key-does-not-match-suite error (a public key whose length or type
+  does not fit the chosen suite); A rejects a response and B rejects an AUTH_RESPONSE in the same way. A session therefore exists only between two
+  keys of the same suite.
 - B chooses the highest version and suite offered by A that B supports; the choice is inside the signed transcript
   (downgrade attempts break the signature). The initiator rejects a choice that was not offered.
 - An unknown capability with `critical = true` aborts the handshake; unknown non-critical capabilities are ignored.
-- `session_id = SHA-256("HAMPP/1 session" || pkA || pkB || nonceA || nonceB || version || suite)[..8]`.
+- `session_id = SHA-256("HAMPP/1 session" || pkA || pkB || nonceA || nonceB || version || suite)[..8]`. Both keys have the length of the chosen
+  suite (32 or 33 bytes), so the concatenation is unambiguous.
 - Capability tags: 1 = Lite profile, 2 = Full profile, 3 = verify-only, 4 = visible fallback.
 - The handshake authenticates; it exchanges no key and encrypts nothing. Pin the peer key (registry or `--expect-peer`) to defeat
   an active man in the middle.
@@ -100,6 +106,10 @@ Per direction, `seq` starts at 1 and `prev_hash` of message n is the first 16 by
 - `seq == last + 1` and `prev_hash` differs -> `invalid:chain-broken`.
 - `seq > last + 1` -> accepted with note `gap:<missing count>` (the chain cannot be checked across a gap).
 - State advances only for accepted messages. Success is `authenticated:registered-instance`.
+- A session message carries its own `protection` field (section 8). The session binds one key per side, so the highest level a side can claim is the level of
+  that key; a sender may claim less per message. The receiver applies section 8 to each message (the peer key comes from the handshake, so the level is a
+  claim unless the receiver's registry records one). A sender whose signature fails (for example a TPM that is unreachable) MUST NOT advance its own
+  sequence number or chain.
 
 ## 7. Versioning and profiles
 

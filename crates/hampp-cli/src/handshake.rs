@@ -1,7 +1,6 @@
 use crate::io::{read_file, write_state, Res};
-use crate::keys::{key_path, parse_pubkey};
+use crate::keys::{key_path, load_signer, parse_pubkey};
 use clap::Subcommand;
-use hampp_core::{FileKeyStore, KeyStore};
 use hampp_session::{
     accept_auth, initiate_finish, make_hello, random_nonce, respond, AuthResponse, Hello,
     HelloResponse, Supported,
@@ -55,27 +54,33 @@ fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Res<T> {
 }
 
 pub fn run(cmd: HsCmd) -> Res<ExitCode> {
-    let sup = Supported::v1();
     match cmd {
         HsCmd::Hello { key } => {
-            let id = FileKeyStore {
-                path: key_path(&key),
-            }
-            .load()?;
+            let (signer, _) = load_signer(&key_path(&key))?;
+            let sup = Supported::for_signer(signer.as_ref());
             println!(
                 "{}",
-                serde_json::to_string_pretty(&make_hello(&id, &sup, vec![], random_nonce()))?
+                serde_json::to_string_pretty(&make_hello(
+                    signer.as_ref(),
+                    &sup,
+                    vec![],
+                    random_nonce()
+                ))?
             );
         }
         HsCmd::Respond { key, hello } => {
-            let id = FileKeyStore {
-                path: key_path(&key),
-            }
-            .load()?;
+            let (signer, _) = load_signer(&key_path(&key))?;
+            let sup = Supported::for_signer(signer.as_ref());
             let h: Hello = read_json(&hello)?;
             println!(
                 "{}",
-                serde_json::to_string_pretty(&respond(&id, &h, &sup, vec![], random_nonce())?)?
+                serde_json::to_string_pretty(&respond(
+                    signer.as_ref(),
+                    &h,
+                    &sup,
+                    vec![],
+                    random_nonce()
+                )?)?
             );
         }
         HsCmd::Auth {
@@ -85,24 +90,11 @@ pub fn run(cmd: HsCmd) -> Res<ExitCode> {
             session_out,
             expect_peer,
         } => {
-            let id = FileKeyStore {
-                path: key_path(&key),
-            }
-            .load()?;
+            let (signer, _) = load_signer(&key_path(&key))?;
             let h: Hello = read_json(&hello)?;
             let r: HelloResponse = read_json(&response)?;
-            let pin = expect_peer
-                .map(|s| -> crate::io::Res<[u8; 32]> {
-                    match parse_pubkey(&s)? {
-                        hampp_core::PublicKey::Ed25519(k) => Ok(k),
-                        hampp_core::PublicKey::P256(_) => Err(
-                            "sessions support Ed25519 keys only (suite 1); a P-256 peer key cannot be pinned here"
-                                .into(),
-                        ),
-                    }
-                })
-                .transpose()?;
-            let (auth, session) = initiate_finish(&id, &h, &r, pin)?;
+            let pin = expect_peer.map(|s| parse_pubkey(&s)).transpose()?;
+            let (auth, session) = initiate_finish(signer.as_ref(), &h, &r, pin)?;
             write_state(&session_out, &serde_json::to_string_pretty(&session)?)?;
             eprintln!("session {}", hex::encode(session.id));
             println!("{}", serde_json::to_string_pretty(&auth)?);

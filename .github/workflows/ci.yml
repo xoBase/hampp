@@ -22,6 +22,7 @@ jobs:
           python -I spec/vectors/verify_vectors.py spec/vectors/lite.json
           python -I spec/vectors/verify_vectors.py --handshake spec/vectors/handshake.json
           python -I spec/vectors/verify_vectors.py --protection spec/vectors/protection.json
+          python -I spec/vectors/verify_vectors.py --handshake-p256 spec/vectors/handshake_p256.json
   python:
     runs-on: ubuntu-latest
     steps:

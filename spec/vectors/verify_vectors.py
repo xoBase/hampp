@@ -191,6 +191,54 @@ def check_protection(path: str) -> int:
     return 1 if failures else 0
 
 
+def p256_pub_of(scalar_hex: str) -> bytes:
+    key = ec.derive_private_key(int(scalar_hex, 16), ec.SECP256R1())
+    return key.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.CompressedPoint)
+
+
+def check_handshake_p256(path: str) -> int:
+    """Handshake and session with suite 2 (spec/PROTOCOL.md sections 5, 6 and 8)."""
+    v = json.load(open(path, encoding="utf-8"))
+    alice_pk, bob_pk = p256_pub_of(v["alice_scalar_hex"]), p256_pub_of(v["bob_scalar_hex"])
+    na, nb = bytes.fromhex(v["nonce_a_hex"]), bytes.fromhex(v["nonce_b_hex"])
+    # fixed parameters of the vector: versions [1], suites [2], no capabilities, agent ids alice/bob
+    t = hashlib.sha256(
+        b"HAMPP/1 transcript"
+        + put(bytes([1])) + put(bytes([2])) + put_caps([])
+        + put(b"alice") + put(bytes([1]) * 16) + put(alice_pk) + put(na)
+        + put(bytes([1, 2])) + put_caps([])
+        + put(b"bob") + put(bytes([2]) * 16) + put(bob_pk) + put(nb)
+    ).digest()
+    failures = 0
+
+    def report(name, ok):
+        nonlocal failures
+        failures += not ok
+        print(("ok   " if ok else "FAIL ") + name)
+
+    report("transcript", t.hex() == v["transcript_hex"])
+    report("sig_b", verify_p256(bob_pk, bytes.fromhex(v["sig_b_hex"]), b"HAMPP/1 hs B" + t))
+    report("sig_a", verify_p256(alice_pk, bytes.fromhex(v["sig_a_hex"]), b"HAMPP/1 hs A" + t))
+    sid = hashlib.sha256(b"HAMPP/1 session" + alice_pk + bob_pk + na + nb + bytes([1, 2])).digest()[:8]
+    report("session_id", sid.hex() == v["session_id_hex"])
+    prev = bytes(16)
+    for m in v["messages"]:
+        text = bytes.fromhex(m["signed_text_hex"]).decode("utf-8")
+        visible, st, payload = extract(text)
+        ok = st == "ok"
+        if ok:
+            flags, suite, key_id, session_id, seq, ts, hprev, sig = parse_header(payload)
+            ph = payload_hash(visible)
+            inp = signing_input(flags, suite, key_id, session_id, seq, ts, ph, hprev)
+            ok = (verify_p256(alice_pk, sig, inp) and suite == 2 and flags & 1 == 1
+                  and PROTECTION[(flags >> 1) & 3] == m["protection"] and key_id == hashlib.sha256(alice_pk).digest()[:8]
+                  and session_id == sid and seq == m["seq"] and ts == m["timestamp"] and hprev == prev
+                  and visible == m["text"])
+            prev = hashlib.sha256(ph + sig).digest()[:16]
+        report(f"message {m['seq']}", ok)
+    return 1 if failures else 0
+
+
 def pub_of(seed_hex: str) -> bytes:
     priv = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(seed_hex))
     return priv.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
@@ -267,6 +315,8 @@ def check_handshake(path: str) -> int:
 def main(argv) -> int:
     if len(argv) >= 2 and argv[0] == "--handshake":
         return check_handshake(argv[1])
+    if len(argv) >= 2 and argv[0] == "--handshake-p256":
+        return check_handshake_p256(argv[1])
     if len(argv) >= 2 and argv[0] == "--protection":
         return check_protection(argv[1])
     return check_lite(argv[0] if argv else "spec/vectors/lite.json")

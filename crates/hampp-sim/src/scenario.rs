@@ -158,7 +158,7 @@ fn sign_step(w: &mut World, st: &Step, i: usize, now: u64) -> Result<Sent, SimEr
         // that the receiver shares with the claimed peer.
         w.ensure_session(&claimed, &st.to)?;
         let sid = w.session_mut(&st.to, &claimed).id;
-        Session::new(sid, [0; 32], 1, 1).sign_next(&signer, &text, now, Carrier::ZeroWidth)
+        Session::new(sid, [0u8; 32].into(), 1, 1).sign_next(&signer, &text, now, Carrier::ZeroWidth)
     } else {
         w.ensure_session(&st.from, &st.to)?;
         w.session_mut(&st.from, &st.to)

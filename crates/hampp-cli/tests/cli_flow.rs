@@ -604,17 +604,160 @@ fn registry_caps_what_a_sender_claims_in_the_cli() {
         .stdout(predicates::str::contains("\"protection_claimed\": false"));
 }
 
+/// Runs the four handshake steps through the CLI and returns the two session file paths.
+fn cli_handshake(dir: &Path, ka: &str, kb: &str) -> (String, String) {
+    let p = |n: &str| dir.join(n).display().to_string();
+    let run = |args: &[&str]| -> String {
+        let out = hampp().args(args).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    std::fs::write(p("hello.json"), run(&["handshake", "hello", "--key", ka])).unwrap();
+    std::fs::write(
+        p("resp.json"),
+        run(&[
+            "handshake",
+            "respond",
+            "--key",
+            kb,
+            "--hello",
+            &p("hello.json"),
+        ]),
+    )
+    .unwrap();
+    std::fs::write(
+        p("auth.json"),
+        run(&[
+            "handshake",
+            "auth",
+            "--key",
+            ka,
+            "--hello",
+            &p("hello.json"),
+            "--response",
+            &p("resp.json"),
+            "--session-out",
+            &p("a.session"),
+        ]),
+    )
+    .unwrap();
+    run(&[
+        "handshake",
+        "accept",
+        "--hello",
+        &p("hello.json"),
+        "--response",
+        &p("resp.json"),
+        "--auth",
+        &p("auth.json"),
+        "--session-out",
+        &p("b.session"),
+    ]);
+    (p("a.session"), p("b.session"))
+}
+
 #[test]
-fn sessions_refuse_p256_keys_clearly() {
+fn p256_session_flow_with_a_protection_per_message_and_replay_protection() {
     let dir = tempfile::tempdir().unwrap();
-    let (key, _) = keygen_p256(dir.path(), "pat");
-    let session = dir.path().join("s.session").display().to_string();
+    let (ka, _) = keygen_p256(dir.path(), "pat");
+    let (kb, _) = keygen_p256(dir.path(), "pia");
+    let (sa, sb) = cli_handshake(dir.path(), &ka, &kb);
+    let session: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&sa).unwrap()).unwrap();
+    assert_eq!(session["suite"], 2);
+    let m1 = sign(&ka, "Routine", &["--session", &sa]);
     hampp()
-        .args(["sign", "--key", &key, "--session", &session])
-        .write_stdin("hi")
+        .args(["verify", "--session", &sb, "--json"])
+        .write_stdin(m1.clone())
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains(
+            "authenticated:registered-instance",
+        ));
+    // a replay of the same message is invalid
+    hampp()
+        .args(["verify", "--session", &sb])
+        .write_stdin(m1)
+        .assert()
+        .code(20)
+        .stdout(predicates::str::contains("replay"));
+    // a software P-256 key cannot claim bound inside a session either, and nothing is consumed
+    hampp()
+        .args([
+            "sign",
+            "--key",
+            &ka,
+            "--session",
+            &sa,
+            "--protection",
+            "bound",
+        ])
+        .write_stdin("x")
         .assert()
         .code(2)
-        .stderr(predicates::str::contains("Ed25519 keys only"));
+        .stdout("");
+    let seq = |f: &str| -> u64 {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(f).unwrap()).unwrap();
+        v["out_seq"].as_u64().unwrap()
+    };
+    assert_eq!(
+        seq(&sa),
+        1,
+        "a refused message must not advance the session"
+    );
+    let m2 = sign(&ka, "Zweite", &["--session", &sa]);
+    hampp()
+        .args(["verify", "--session", &sb, "--min-protection", "bound"])
+        .write_stdin(m2)
+        .assert()
+        .code(10)
+        .stdout(predicates::str::contains("protection-too-low"));
+}
+
+#[test]
+fn peers_with_different_key_types_get_a_clear_handshake_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ka, _) = keygen(dir.path(), "alice");
+    let (kb, _) = keygen_p256(dir.path(), "pia");
+    let hello = hampp()
+        .args(["handshake", "hello", "--key", &ka])
+        .output()
+        .unwrap();
+    let hello_path = dir.path().join("hello.json");
+    std::fs::write(&hello_path, hello.stdout).unwrap();
+    hampp()
+        .args([
+            "handshake",
+            "respond",
+            "--key",
+            &kb,
+            "--hello",
+            &hello_path.display().to_string(),
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains("no common signature suite"));
+}
+
+#[test]
+fn a_session_refuses_a_signer_of_another_suite() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ka, _) = keygen_p256(dir.path(), "pat");
+    let (kb, _) = keygen_p256(dir.path(), "pia");
+    let (sa, _) = cli_handshake(dir.path(), &ka, &kb);
+    let (other, _) = keygen(dir.path(), "ed");
+    hampp()
+        .args(["sign", "--key", &other, "--session", &sa])
+        .write_stdin("x")
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("suite"));
 }
 
 #[test]

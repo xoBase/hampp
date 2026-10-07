@@ -67,7 +67,9 @@ More detail on every reason code: [references/verdicts.md](references/verdicts.m
 - A signature proves "this key". It proves "this agent" only after you pinned the key
   (`hampp registry add`, or `--expect-peer` in the handshake) or received it over a trusted channel.
 - For ordering and replay protection run the handshake (`hampp handshake hello|respond|auth|accept`, see `AGENTS.md`).
-  Without it (Lite) a signed message can be re-posted by anyone.
+  Without it (Lite) a signed message can be re-posted by anyone, so send consequential (`bound`) messages inside a session.
+  Both peers need a key of the same type (Ed25519, or P-256 including TPM keys); otherwise the handshake fails with `no common signature suite`.
+  A failed signature (for example an unreachable TPM) does not advance the session; retry when the TPM is back.
 - Capabilities are negotiated inside the handshake. Unknown optional capabilities are ignored; an unknown
   *critical* one aborts the handshake. A peer's declared capability is a claim, never a proof.
 

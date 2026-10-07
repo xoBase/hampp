@@ -47,7 +47,8 @@ knows the key. It is about the key, not about secrecy: HAMPP never encrypts. See
 
 - **Lite** (default): one message, one signature, no state. Result at best `signed-by-agent`.
   A signed message can be re-posted by anyone; Lite has no replay protection.
-- **Full**: `hampp handshake …` first; adds replay protection and ordering; result `registered-instance`.
+- **Full**: `hampp handshake …` first; adds replay protection and ordering; result `registered-instance`. Both peers need a key of the same type
+  (Ed25519 or P-256/TPM). Run consequential (`bound`) messages in a session: in Lite mode anyone can re-post them.
 - **Verify-only**: you may verify without having a key of your own.
 
 ## Contributing or attacking

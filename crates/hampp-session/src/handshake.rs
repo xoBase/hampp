@@ -1,5 +1,5 @@
 use crate::session::Session;
-use hampp_core::{hexfmt, verify_sig, SigningIdentity};
+use hampp_core::{hexfmt, verify_signature, PublicKey, Signer};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -33,13 +33,26 @@ impl Supported {
         Supported {
             versions: vec![1],
             suites: vec![1],
-            known_caps: vec![
-                CAP_PROFILE_LITE,
-                CAP_PROFILE_FULL,
-                CAP_VERIFY_ONLY,
-                CAP_VISIBLE_FALLBACK,
-            ],
+            known_caps: Self::all_caps(),
         }
+    }
+
+    /// What a party with this key can offer: exactly the suite of its key (one key, one suite).
+    pub fn for_signer(s: &dyn Signer) -> Self {
+        Supported {
+            versions: vec![1],
+            suites: vec![s.suite()],
+            known_caps: Self::all_caps(),
+        }
+    }
+
+    fn all_caps() -> Vec<u8> {
+        vec![
+            CAP_PROFILE_LITE,
+            CAP_PROFILE_FULL,
+            CAP_VERIFY_ONLY,
+            CAP_VISIBLE_FALLBACK,
+        ]
     }
 }
 
@@ -52,7 +65,7 @@ pub struct Hello {
     #[serde(with = "hexfmt")]
     pub instance_id: [u8; 16],
     #[serde(with = "hexfmt")]
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
     #[serde(with = "hexfmt")]
     pub nonce: [u8; 32],
 }
@@ -66,7 +79,7 @@ pub struct HelloResponse {
     #[serde(with = "hexfmt")]
     pub instance_id: [u8; 16],
     #[serde(with = "hexfmt")]
-    pub public_key: [u8; 32],
+    pub public_key: PublicKey,
     #[serde(with = "hexfmt")]
     pub nonce: [u8; 32],
     #[serde(with = "hexfmt")]
@@ -93,6 +106,12 @@ pub enum HandshakeError {
     BadSignature,
     #[error("peer public key differs from the expected key")]
     PeerKeyMismatch,
+    #[error(
+        "a key does not match the negotiated signature suite (both peers need a key of that suite)"
+    )]
+    KeyDoesNotMatchSuite,
+    #[error("signing failed: {0}")]
+    Signing(String),
 }
 
 pub fn random_nonce() -> [u8; 32] {
@@ -122,20 +141,22 @@ pub fn transcript_hash(h: &Hello, r: &HelloResponse) -> [u8; 32] {
     put_caps(&mut b, &h.caps);
     put(&mut b, h.agent_id.as_bytes());
     put(&mut b, &h.instance_id);
-    put(&mut b, &h.public_key);
+    put(&mut b, h.public_key.as_bytes());
     put(&mut b, &h.nonce);
     put(&mut b, &[r.version, r.suite]);
     put_caps(&mut b, &r.caps);
     put(&mut b, r.agent_id.as_bytes());
     put(&mut b, &r.instance_id);
-    put(&mut b, &r.public_key);
+    put(&mut b, r.public_key.as_bytes());
     put(&mut b, &r.nonce);
     Sha256::digest(&b).into()
 }
 
+/// `pk_a || pk_b` is unambiguous because both keys belong to the negotiated suite and so have
+/// the same length (32 bytes for suite 1, 33 for suite 2).
 pub fn session_id(
-    pk_a: &[u8; 32],
-    pk_b: &[u8; 32],
+    pk_a: &[u8],
+    pk_b: &[u8],
     na: &[u8; 32],
     nb: &[u8; 32],
     version: u8,
@@ -165,7 +186,7 @@ fn reject_unknown_critical(caps: &[Capability], known: &[u8]) -> Result<(), Hand
 }
 
 pub fn make_hello(
-    id: &SigningIdentity,
+    id: &dyn Signer,
     sup: &Supported,
     caps: Vec<Capability>,
     nonce: [u8; 32],
@@ -174,15 +195,15 @@ pub fn make_hello(
         versions: sup.versions.clone(),
         suites: sup.suites.clone(),
         caps,
-        agent_id: id.identity.agent_id.clone(),
-        instance_id: id.identity.instance_id,
-        public_key: id.identity.public_key,
+        agent_id: id.agent_id().to_string(),
+        instance_id: id.instance_id(),
+        public_key: id.public_key(),
         nonce,
     }
 }
 
 pub fn respond(
-    id: &SigningIdentity,
+    id: &dyn Signer,
     hello: &Hello,
     sup: &Supported,
     caps: Vec<Capability>,
@@ -203,26 +224,32 @@ pub fn respond(
         .max()
         .copied()
         .ok_or(HandshakeError::NoCommonSuite)?;
+    // one key per party: both keys must belong to the chosen suite
+    if id.suite() != suite || hello.public_key.suite() != suite {
+        return Err(HandshakeError::KeyDoesNotMatchSuite);
+    }
     let mut resp = HelloResponse {
         version,
         suite,
         caps,
-        agent_id: id.identity.agent_id.clone(),
-        instance_id: id.identity.instance_id,
-        public_key: id.identity.public_key,
+        agent_id: id.agent_id().to_string(),
+        instance_id: id.instance_id(),
+        public_key: id.public_key(),
         nonce,
         signature: [0; 64],
     };
-    resp.signature = id.sign(&signed_label(LABEL_B, &transcript_hash(hello, &resp)));
+    resp.signature = id
+        .sign(&signed_label(LABEL_B, &transcript_hash(hello, &resp)))
+        .map_err(|e| HandshakeError::Signing(e.to_string()))?;
     Ok(resp)
 }
 
 /// Initiator: verify B, sign the transcript as A. `expected_peer` pins B's key.
 pub fn initiate_finish(
-    id: &SigningIdentity,
+    id: &dyn Signer,
     hello: &Hello,
     resp: &HelloResponse,
-    expected_peer: Option<[u8; 32]>,
+    expected_peer: Option<PublicKey>,
 ) -> Result<(AuthResponse, Session), HandshakeError> {
     if !hello.versions.contains(&resp.version) || !hello.suites.contains(&resp.suite) {
         return Err(HandshakeError::NotOffered);
@@ -232,8 +259,11 @@ pub fn initiate_finish(
             return Err(HandshakeError::PeerKeyMismatch);
         }
     }
+    if id.suite() != resp.suite || resp.public_key.suite() != resp.suite {
+        return Err(HandshakeError::KeyDoesNotMatchSuite);
+    }
     let t = transcript_hash(hello, resp);
-    if !verify_sig(
+    if !verify_signature(
         &resp.public_key,
         &signed_label(LABEL_B, &t),
         &resp.signature,
@@ -241,11 +271,13 @@ pub fn initiate_finish(
         return Err(HandshakeError::BadSignature);
     }
     let auth = AuthResponse {
-        signature: id.sign(&signed_label(LABEL_A, &t)),
+        signature: id
+            .sign(&signed_label(LABEL_A, &t))
+            .map_err(|e| HandshakeError::Signing(e.to_string()))?,
     };
     let sid = session_id(
-        &hello.public_key,
-        &resp.public_key,
+        hello.public_key.as_bytes(),
+        resp.public_key.as_bytes(),
         &hello.nonce,
         &resp.nonce,
         resp.version,
@@ -253,7 +285,7 @@ pub fn initiate_finish(
     );
     Ok((
         auth,
-        Session::new(sid, resp.public_key, resp.version, resp.suite),
+        Session::new(sid, resp.public_key.clone(), resp.version, resp.suite),
     ))
 }
 
@@ -263,8 +295,11 @@ pub fn accept_auth(
     resp: &HelloResponse,
     auth: &AuthResponse,
 ) -> Result<Session, HandshakeError> {
+    if hello.public_key.suite() != resp.suite || resp.public_key.suite() != resp.suite {
+        return Err(HandshakeError::KeyDoesNotMatchSuite);
+    }
     let t = transcript_hash(hello, resp);
-    if !verify_sig(
+    if !verify_signature(
         &hello.public_key,
         &signed_label(LABEL_A, &t),
         &auth.signature,
@@ -272,8 +307,8 @@ pub fn accept_auth(
         return Err(HandshakeError::BadSignature);
     }
     let sid = session_id(
-        &hello.public_key,
-        &resp.public_key,
+        hello.public_key.as_bytes(),
+        resp.public_key.as_bytes(),
         &hello.nonce,
         &resp.nonce,
         resp.version,
@@ -281,7 +316,7 @@ pub fn accept_auth(
     );
     Ok(Session::new(
         sid,
-        hello.public_key,
+        hello.public_key.clone(),
         resp.version,
         resp.suite,
     ))
@@ -353,7 +388,12 @@ mod tests {
         assert!(initiate_finish(&alice(), &hello, &resp, None).is_ok());
         // ... with the expected peer key it must fail
         assert!(matches!(
-            initiate_finish(&alice(), &hello, &resp, Some(bob().identity.public_key)),
+            initiate_finish(
+                &alice(),
+                &hello,
+                &resp,
+                Some(bob().identity.public_key.into())
+            ),
             Err(HandshakeError::PeerKeyMismatch)
         ));
     }

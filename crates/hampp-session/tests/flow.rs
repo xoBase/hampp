@@ -25,8 +25,8 @@ fn handshake_yields_matching_session_ids() {
     let (sa, sb) = full_handshake();
     assert_eq!(sa.id, sb.id);
     assert_ne!(sa.id, [0u8; 8]);
-    assert_eq!(sa.peer_public_key, bob().identity.public_key);
-    assert_eq!(sb.peer_public_key, alice().identity.public_key);
+    assert_eq!(sa.peer_public_key, bob().identity.public_key.into());
+    assert_eq!(sb.peer_public_key, alice().identity.public_key.into());
 }
 
 #[test]
@@ -163,4 +163,184 @@ fn session_state_advances_when_a_protection_policy_downgrades_the_verdict() {
     assert_eq!(sb.in_seq, 1, "an authentic message advances the state");
     // the same message again is a replay, not acceptable later by lowering the policy
     assert_eq!(sb.verify_next(&m, NOW).code(), "invalid:replay");
+}
+
+// ---- sessions with suite 2 (ECDSA P-256) ----
+
+mod p256 {
+    use super::*;
+    use hampp_core::{P256Software, Protection, PublicKey, SignError, Signer};
+
+    fn pa() -> P256Software {
+        P256Software::from_scalar("pa", [0x33; 32], [3; 16])
+            .unwrap()
+            .claim_level_for_tests(Protection::Bound)
+    }
+    fn pb() -> P256Software {
+        P256Software::from_scalar("pb", [0x44; 32], [4; 16])
+            .unwrap()
+            .claim_level_for_tests(Protection::Bound)
+    }
+
+    fn handshake() -> (Session, Session) {
+        let hello = make_hello(&pa(), &Supported::for_signer(&pa()), vec![], NA);
+        let resp = respond(&pb(), &hello, &Supported::for_signer(&pb()), vec![], NB).unwrap();
+        let (auth, sa) = initiate_finish(&pa(), &hello, &resp, None).unwrap();
+        let sb = accept_auth(&hello, &resp, &auth).unwrap();
+        (sa, sb)
+    }
+
+    #[test]
+    fn handshake_yields_matching_sessions_with_suite_2() {
+        let (sa, sb) = handshake();
+        assert_eq!(sa.id, sb.id);
+        assert_eq!((sa.suite, sb.suite), (2, 2));
+        assert_eq!(sa.peer_public_key, pb().public_key());
+        assert_eq!(sb.peer_public_key, pa().public_key());
+    }
+
+    #[test]
+    fn messages_flow_with_a_protection_chosen_per_message() {
+        let (mut sa, mut sb) = handshake();
+        let m1 = sa
+            .try_sign_next(
+                &pa(),
+                "folgenreich",
+                NOW,
+                Carrier::ZeroWidth,
+                Protection::Bound,
+            )
+            .unwrap();
+        let m2 = sa
+            .try_sign_next(
+                &pa(),
+                "Routine",
+                NOW + 1,
+                Carrier::Visible,
+                Protection::Software,
+            )
+            .unwrap();
+        let v1 = sb.verify_next(&m1, NOW);
+        assert_eq!(v1.code(), "authenticated:registered-instance");
+        assert_eq!(v1.protection.unwrap().level, Protection::Bound);
+        assert!(v1.protection.unwrap().claimed);
+        let v2 = sb.verify_next(&m2, NOW + 1);
+        assert_eq!(v2.code(), "authenticated:registered-instance");
+        assert_eq!(v2.protection.unwrap().level, Protection::Software);
+        // the bound message cannot be replayed, which is the point of running it in a session
+        assert_eq!(sb.verify_next(&m1, NOW + 2).code(), "invalid:replay");
+    }
+
+    #[test]
+    fn a_policy_downgrade_still_advances_the_session() {
+        let (mut sa, mut sb) = handshake();
+        let m = sa
+            .try_sign_next(
+                &pa(),
+                "Routine",
+                NOW,
+                Carrier::ZeroWidth,
+                Protection::Software,
+            )
+            .unwrap();
+        let v = sb
+            .verify_next(&m, NOW)
+            .with_min_protection(Some(Protection::Bound));
+        assert_eq!(v.code(), "unverified:protection-too-low");
+        assert_eq!(sb.in_seq, 1);
+    }
+
+    #[test]
+    fn a_tampered_signature_or_a_wrong_pin_fails_the_handshake() {
+        let hello = make_hello(&pa(), &Supported::for_signer(&pa()), vec![], NA);
+        let mut resp = respond(&pb(), &hello, &Supported::for_signer(&pb()), vec![], NB).unwrap();
+        let wrong: PublicKey = pa().public_key();
+        assert_eq!(
+            initiate_finish(&pa(), &hello, &resp, Some(wrong)).err(),
+            Some(HandshakeError::PeerKeyMismatch)
+        );
+        assert!(initiate_finish(&pa(), &hello, &resp, Some(pb().public_key())).is_ok());
+        resp.signature[10] ^= 1;
+        assert_eq!(
+            initiate_finish(&pa(), &hello, &resp, None).err(),
+            Some(HandshakeError::BadSignature)
+        );
+    }
+
+    #[test]
+    fn peers_with_different_key_types_cannot_open_a_session() {
+        // Ed25519 initiator, P-256 responder: no common suite
+        let hello = make_hello(&alice(), &Supported::for_signer(&alice()), vec![], NA);
+        assert_eq!(
+            respond(&pb(), &hello, &Supported::for_signer(&pb()), vec![], NB).err(),
+            Some(HandshakeError::NoCommonSuite)
+        );
+    }
+
+    #[test]
+    fn a_key_that_does_not_match_the_advertised_suite_is_refused() {
+        // a P-256 key in a hello that claims suite 1
+        let mut hello = make_hello(&pa(), &Supported::for_signer(&pa()), vec![], NA);
+        hello.suites = vec![1, 2];
+        let sup = Supported {
+            suites: vec![1, 2],
+            ..Supported::v1()
+        };
+        // the responder is an Ed25519 key but would pick suite 2 from the offer: its key does not fit
+        let err = respond(&bob(), &hello, &sup, vec![], NB).err();
+        assert_eq!(err, Some(HandshakeError::KeyDoesNotMatchSuite));
+    }
+
+    struct Failing;
+    impl Signer for Failing {
+        fn suite(&self) -> u8 {
+            2
+        }
+        fn public_key(&self) -> PublicKey {
+            pa().public_key()
+        }
+        fn level(&self) -> Protection {
+            Protection::Bound
+        }
+        fn agent_id(&self) -> &str {
+            "failing"
+        }
+        fn instance_id(&self) -> [u8; 16] {
+            [0; 16]
+        }
+        fn sign(&self, _: &[u8]) -> Result<[u8; 64], SignError> {
+            Err(SignError::Backend("TPM unavailable".into()))
+        }
+    }
+
+    #[test]
+    fn a_failed_signature_does_not_advance_the_session() {
+        let (mut sa, mut sb) = handshake();
+        assert!(sa
+            .try_sign_next(&Failing, "x", NOW, Carrier::ZeroWidth, Protection::Bound)
+            .is_err());
+        assert_eq!((sa.out_seq, sa.out_prev), (0, [0; 16]));
+        // the next real message is still seq 1 and verifies
+        let m = sa
+            .try_sign_next(&pa(), "ok", NOW, Carrier::ZeroWidth, Protection::Bound)
+            .unwrap();
+        assert_eq!(
+            sb.verify_next(&m, NOW).code(),
+            "authenticated:registered-instance"
+        );
+    }
+
+    #[test]
+    fn a_signer_of_the_wrong_suite_or_level_is_refused_by_the_session() {
+        let (mut sa, _) = handshake();
+        assert!(sa
+            .try_sign_next(&alice(), "x", NOW, Carrier::ZeroWidth, Protection::Software)
+            .is_err());
+        let weak = P256Software::from_scalar("w", [0x33; 32], [3; 16]).unwrap();
+        assert!(matches!(
+            sa.try_sign_next(&weak, "x", NOW, Carrier::ZeroWidth, Protection::Bound),
+            Err(SignError::LevelNotAvailable { .. })
+        ));
+        assert_eq!(sa.out_seq, 0);
+    }
 }

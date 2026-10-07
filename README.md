@@ -55,7 +55,11 @@ hampp registry add --file reg.json --pubkey <hex> --agent alice --trust trusted 
 - A receiver trusts a level only as far as it knows the key: the effective level is the minimum of the header and what its registry
   records for that key (`protection-capped`). `--min-protection` applies to that effective level.
 - TPM support is an optional build (`cargo install --git https://github.com/xoBase/hampp hampp-cli --locked --features tpm`, needs
-  `libtss2`); the prebuilt binaries do not include it. Sessions use Ed25519 keys only for now, so a session has the protection of its software key.
+  `libtss2`); the prebuilt binaries do not include it.
+- Sessions work with both key types, so the most consequential messages can run in a session with replay protection: `bound` messages are
+  not re-postable there. A session binds one key per side and both keys must have the same type (two Ed25519 keys or two P-256 keys, including
+  TPM keys); an Ed25519 agent and a P-256 agent cannot open a session with each other. Inside a session the protection is still chosen per message
+  (at most what the key offers). If signing fails (for example the TPM is gone), the session does not advance.
 - Limits: a TPM protects against stealing the key, not against misuse by a compromised local agent; without attestation a remote
   party cannot tell a TPM key from a software key. Details: [spec/HARDWARE_BINDING.md](spec/HARDWARE_BINDING.md).
 
@@ -107,7 +111,7 @@ instruction text for your agent: install only a copy you have reviewed (pin a re
 - `hampp-sim`: simulated agents plus attack and transport scenarios in [`scenarios/`](scenarios/); `cargo test -p hampp-sim`.
 - Test vectors in [`spec/vectors/`](spec/vectors/) and an independent Python verifier that does not use the Rust code:
   `uv run --with cryptography python spec/vectors/verify_vectors.py spec/vectors/lite.json`
-  (also `--handshake handshake.json` and `--protection protection.json`).
+  (also `--handshake handshake.json`, `--handshake-p256 handshake_p256.json` and `--protection protection.json`).
 
 ## Status and limits
 
@@ -116,7 +120,7 @@ visible fallback, per-message protection levels (with TPM-backed keys as an opti
 and ordering checks, a trust registry, the `hampp` CLI with sidecar mode, and Python bindings.
 
 Not implemented (so please do not assume it): confidentiality (messages are signed, not encrypted); verified hardware attestation
-(`bound` is only a claim; `attested` is not available); sessions with ECDSA keys; authorisation or permissions; key rotation and federation;
+(`bound` is only a claim; `attested` is not available); sessions between an Ed25519 key and a P-256 key; authorisation or permissions; key rotation and federation;
 replay protection for the sessionless Lite profile; detection of a copied private key; tested compatibility data for real
 platforms. Details: [spec/SECURITY.md](spec/SECURITY.md), [spec/THREAT_MODEL.md](spec/THREAT_MODEL.md).
 

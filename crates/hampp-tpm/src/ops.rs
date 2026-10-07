@@ -270,6 +270,12 @@ impl Signer for TpmSigner {
     fn level(&self) -> Protection {
         Protection::Bound
     }
+    fn agent_id(&self) -> &str {
+        &self.agent_id
+    }
+    fn instance_id(&self) -> [u8; 16] {
+        self.instance_id
+    }
     fn sign(&self, msg: &[u8]) -> Result<[u8; 64], SignError> {
         self.sign_inner(msg)
             .map_err(|e| SignError::Backend(e.to_string()))

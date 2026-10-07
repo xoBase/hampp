@@ -226,3 +226,134 @@ fn a_tpm_key_that_lost_its_tpm_never_signs() {
         .code(2)
         .stdout("");
 }
+
+#[test]
+fn a_tpm_key_in_a_session_signs_at_bound_and_replays_are_rejected() {
+    let Some(tpm) = Swtpm::start() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let p = |n: &str| dir.path().join(n).display().to_string();
+    let run = |args: &[&str]| -> String {
+        let out = hampp(&tpm.tcti).args(args).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    // initiator: TPM key, responder: software P-256 key (both suite 2)
+    run(&[
+        "keygen",
+        "--agent",
+        "tpm-a",
+        "--key",
+        &p("a.json"),
+        "--protection",
+        "bound",
+    ]);
+    run(&[
+        "keygen",
+        "--agent",
+        "sw-b",
+        "--key",
+        &p("b.json"),
+        "--alg",
+        "ecdsa-p256",
+    ]);
+    std::fs::write(
+        p("hello.json"),
+        run(&["handshake", "hello", "--key", &p("a.json")]),
+    )
+    .unwrap();
+    std::fs::write(
+        p("resp.json"),
+        run(&[
+            "handshake",
+            "respond",
+            "--key",
+            &p("b.json"),
+            "--hello",
+            &p("hello.json"),
+        ]),
+    )
+    .unwrap();
+    std::fs::write(
+        p("auth.json"),
+        run(&[
+            "handshake",
+            "auth",
+            "--key",
+            &p("a.json"),
+            "--hello",
+            &p("hello.json"),
+            "--response",
+            &p("resp.json"),
+            "--session-out",
+            &p("a.session"),
+        ]),
+    )
+    .unwrap();
+    run(&[
+        "handshake",
+        "accept",
+        "--hello",
+        &p("hello.json"),
+        "--response",
+        &p("resp.json"),
+        "--auth",
+        &p("auth.json"),
+        "--session-out",
+        &p("b.session"),
+    ]);
+
+    let out = hampp(&tpm.tcti)
+        .args(["sign", "--key", &p("a.json"), "--session", &p("a.session")])
+        .write_stdin("Deploy freigegeben")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let msg = String::from_utf8(out.stdout).unwrap();
+    hampp(&tpm.tcti)
+        .args([
+            "verify",
+            "--session",
+            &p("b.session"),
+            "--min-protection",
+            "bound",
+        ])
+        .write_stdin(msg.clone())
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains(
+            "AUTHENTICATED (registered-instance)",
+        ))
+        .stdout(predicates::str::contains(
+            "HARDWARE_BOUND (claimed, not verified)",
+        ));
+    // the highest-stakes message cannot be replayed any more
+    hampp(&tpm.tcti)
+        .args(["verify", "--session", &p("b.session")])
+        .write_stdin(msg)
+        .assert()
+        .code(20)
+        .stdout(predicates::str::contains("replay"));
+    // a TPM that went away: no message, and the session does not advance
+    let seq = || -> u64 {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p("a.session")).unwrap()).unwrap();
+        v["out_seq"].as_u64().unwrap()
+    };
+    assert_eq!(seq(), 1);
+    let dead = format!("swtpm:host=127.0.0.1,port={}", free_pair());
+    hampp(&dead)
+        .args(["sign", "--key", &p("a.json"), "--session", &p("a.session")])
+        .write_stdin("x")
+        .assert()
+        .code(2)
+        .stdout("");
+    assert_eq!(seq(), 1);
+}

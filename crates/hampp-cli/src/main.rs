@@ -365,7 +365,7 @@ fn run(cli: Cli) -> Res<ExitCode> {
             protection,
         } => {
             let text = read_input(&file)?;
-            let (signer, meta) = load_signer(&key_path(&key))?;
+            let (signer, _meta) = load_signer(&key_path(&key))?;
             let level = protection.map(Protection::from).unwrap_or(signer.level());
             let carrier = if visible {
                 Carrier::Visible
@@ -374,18 +374,9 @@ fn run(cli: Cli) -> Res<ExitCode> {
             };
             let out = match session {
                 Some(sp) => {
-                    if meta.alg != hampp_core::ALG_ED25519 {
-                        return Err("sessions support Ed25519 keys only (suite 1)".into());
-                    }
-                    if level != Protection::Software {
-                        return Err("a session has the protection of its key; sessions currently use software keys only".into());
-                    }
-                    let id = FileKeyStore {
-                        path: key_path(&key),
-                    }
-                    .load()?;
                     let mut s = load_session(&sp)?;
-                    let o = s.sign_next(&id, &text, now(), carrier);
+                    // state advances only if signing succeeded (a TPM may fail)
+                    let o = s.try_sign_next(signer.as_ref(), &text, now(), carrier, level)?;
                     save_session(&sp, &s)?;
                     o
                 }
