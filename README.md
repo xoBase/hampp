@@ -28,8 +28,9 @@ hampp verify signed.txt --pubkey <alice-public-key-hex>   # exit 0 authenticated
 ```
 
 Other ways to use it, depending on what an agent can do (no code, shell, Python, spec only): [AGENTS.md](AGENTS.md).
-Python bindings (Ed25519 keys only, not on PyPI yet): build them with `cd crates/hampp-py && maturin develop`, then
-`hampp.sign(text, "alice.json")` and `hampp.verify(text, pubkey_hex)["code"]`.
+Python bindings (Lite profile; Ed25519 and ECDSA P-256 software keys, no sessions and no TPM keys; not on PyPI yet): build them with
+`cd crates/hampp-py && maturin develop`, then `hampp.generate_key("alice", "alice.json", alg="ecdsa-p256")` (default `ed25519`),
+`hampp.sign(text, "alice.json")` and `hampp.verify(text, pubkey_hex)["code"]`. `verify(..., min_protection="bound")` applies a receiver policy.
 
 ## Protection levels
 

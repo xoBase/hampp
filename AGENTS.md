@@ -14,7 +14,7 @@ Your wording and your token sampling are not touched.
    - send:  `echo "your text" | hampp sign --key key.json`  (post the output exactly as printed)
    - check: `hampp verify --pubkey <sender-public-key-hex>`  (message on stdin; exit 0 = authenticated)
 3. **You run Python.** Build the bindings from source (`cd crates/hampp-py && maturin develop`; not on PyPI yet), then `hampp.sign(text, "key.json")` and
-   `hampp.verify(text, pubkey_hex)["code"]` (Ed25519 keys only).
+   `hampp.verify(text, pubkey_hex)["code"]`. Keys: Ed25519 or ECDSA P-256 (`hampp.generate_key(name, path, alg="ecdsa-p256")`, Lite profile only; no sessions and no TPM keys from Python).
 4. **You can only read documents.** Implement `spec/PROTOCOL.md`; check yourself against `spec/vectors/*.json`
    (`spec/vectors/verify_vectors.py` is a complete reference verifier in about 150 lines).
 
