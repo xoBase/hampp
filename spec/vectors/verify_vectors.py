@@ -129,6 +129,20 @@ def verify_p256(pubkey: bytes, sig: bytes, msg: bytes) -> bool:
     return True
 
 
+def valid_public_key(pubkey: bytes) -> bool:
+    """spec/PROTOCOL.md section 2: 32 bytes = Ed25519; suite 2 = a SEC1 *compressed* P-256 point
+    (tag 0x02 or 0x03) and no other spelling (not 0x05, not the 65-byte uncompressed form)."""
+    if len(pubkey) == 32:
+        return True
+    if len(pubkey) != 33 or pubkey[0] not in (2, 3):
+        return False
+    try:
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), pubkey)
+    except ValueError:
+        return False
+    return True
+
+
 def verify_protection(text: str, pubkey: bytes, registry=None, minimum=None):
     """Sections 2, 4 and 8 of spec/PROTOCOL.md. Returns (code, protection or None, notes)."""
     visible, st, payload = extract(text)
@@ -182,9 +196,15 @@ def check_protection(path: str) -> int:
     failures = 0
     for v in json.load(open(path, encoding="utf-8")):
         text = bytes.fromhex(v["signed_text_hex"]).decode("utf-8")
-        got = verify_protection(text, bytes.fromhex(v["public_key_hex"]),
-                                v.get("registry_protection"), v.get("min_protection"))
+        pubkey = bytes.fromhex(v["public_key_hex"])
+        if not valid_public_key(pubkey):
+            # a verifier must reject such a key as a key, before any verdict
+            got = ("key-rejected", None, [])
+        else:
+            got = verify_protection(text, pubkey, v.get("registry_protection"), v.get("min_protection"))
         want = (v["expected"], v["expected_protection"], v["expected_notes"])
+        if v.get("key_valid", True) != (got[0] != "key-rejected"):
+            want = ("key validity mismatch",) + want[1:]
         ok = got == want
         failures += not ok
         print(("ok   " if ok else "FAIL ") + v["name"] + ("" if ok else f" got={got} expected={want}"))

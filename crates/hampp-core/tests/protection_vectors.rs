@@ -9,6 +9,10 @@ struct Vector {
     name: String,
     suite: u8,
     public_key_hex: String,
+    /// `false`: the key bytes are not a valid HAMPP key (spec/PROTOCOL.md section 2) and a
+    /// verifier must reject them as a key, with no verdict (`expected` is `key-rejected`).
+    #[serde(skip_serializing_if = "is_true", default = "yes")]
+    key_valid: bool,
     signed_text_hex: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     registry_protection: Option<String>,
@@ -17,6 +21,13 @@ struct Vector {
     expected: String,
     expected_protection: Option<String>,
     expected_notes: Vec<String>,
+}
+
+fn yes() -> bool {
+    true
+}
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 const TS: u64 = 1_791_000_000;
@@ -41,6 +52,22 @@ fn header_of(text: &str) -> (String, Header) {
     (ex.visible, Header::decode(&bytes).unwrap())
 }
 
+/// Key bytes that are not a valid HAMPP key, paired with a message that key's owner signed.
+fn mk_bad_key(name: &str, key_bytes: &[u8], signed: &str) -> Vector {
+    Vector {
+        name: name.into(),
+        suite: 2,
+        public_key_hex: hex::encode(key_bytes),
+        key_valid: false,
+        signed_text_hex: hex::encode(signed.as_bytes()),
+        registry_protection: None,
+        min_protection: None,
+        expected: "key-rejected".into(),
+        expected_protection: None,
+        expected_notes: vec![],
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn mk(
     name: &str,
@@ -56,6 +83,7 @@ fn mk(
         name: name.into(),
         suite: key.suite(),
         public_key_hex: key.to_hex(),
+        key_valid: true,
         signed_text_hex: hex::encode(signed.as_bytes()),
         registry_protection: registry.map(|p| p.as_str().into()),
         min_protection: min.map(|p| p.as_str().into()),
@@ -100,6 +128,23 @@ fn build() -> Vec<Vector> {
     let (vis, mut h) = header_of(&m_sw);
     h.suite = 3;
     let suite3 = render(&vis, &h, Carrier::ZeroWidth);
+
+    // the same P-256 point in spellings that are not valid keys: SEC1 tag 0x05 ("compact"), the
+    // uncompressed form, and an x coordinate that is not on the curve
+    let compressed = swk.as_bytes().to_vec();
+    let mut tag5 = compressed.clone();
+    tag5[0] = 0x05;
+    let uncompressed = {
+        use p256::elliptic_curve::sec1::ToEncodedPoint;
+        p256::PublicKey::from_sec1_bytes(&compressed)
+            .unwrap()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec()
+    };
+    let mut off_curve = vec![0x02];
+    off_curve.extend([0u8; 31]);
+    off_curve.push(1);
 
     vec![
         mk("p0-suite1", &edk, m_ed, None, None, ok, Some(Software), &[]),
@@ -233,6 +278,9 @@ fn build() -> Vec<Vector> {
             None,
             &[],
         ),
+        mk_bad_key("neg-key-tag-05-alias", &tag5, &m_bound),
+        mk_bad_key("neg-key-uncompressed", &uncompressed, &m_bound),
+        mk_bad_key("neg-key-not-on-curve", &off_curve, &m_bound),
         mk(
             "neg-wrong-signer-suite2",
             &p256(0x44, Software).public_key(),
@@ -270,9 +318,18 @@ fn protection_vectors_file_is_current() {
 fn every_protection_vector_yields_its_expected_verdict() {
     let on_disk: Vec<Vector> =
         serde_json::from_str(&std::fs::read_to_string(path()).unwrap()).unwrap();
-    assert!(on_disk.len() >= 15);
+    assert!(on_disk.len() >= 18);
     for v in on_disk {
         let text = String::from_utf8(hex::decode(&v.signed_text_hex).unwrap()).unwrap();
+        if !v.key_valid {
+            assert_eq!(v.expected, "key-rejected", "vector {}", v.name);
+            assert!(
+                PublicKey::from_hex(&v.public_key_hex).is_err(),
+                "vector {}: an invalid key must be rejected",
+                v.name
+            );
+            continue;
+        }
         let key = PublicKey::from_hex(&v.public_key_hex).unwrap();
         let min = v
             .min_protection
