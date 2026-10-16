@@ -56,6 +56,23 @@ fn build() -> Vec<Vector> {
         &format!("{} {}", &hex_body[..20], &hex_body[20..]),
     );
     let pc = SignParams::lite(TS).with_compact(true);
+    // base64url visible line: `[hampp1u:...]`
+    let b64 = sign_text(&id, ok, &p, Carrier::VisibleB64);
+    let b64_padded = b64.replacen(']', "=]", 1);
+    let b64_spaced = b64.replacen("[hampp1u:", "[hampp1u: ", 1);
+    let b64_spare_bits = {
+        const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut bytes = b64.clone().into_bytes();
+        let last = bytes.len() - 2; // before the closing bracket
+        let idx = A.iter().position(|c| *c == bytes[last]).unwrap();
+        bytes[last] = A[(idx & !15) | 1]; // same 6 bytes of payload, non-zero unused bits
+        String::from_utf8(bytes).unwrap()
+    };
+    // an older line of the other kind quoted inside the text: the LAST line is the envelope
+    let quoted_hex = sign_text(&id, "alt", &p, Carrier::Visible);
+    let quoted_b64 = sign_text(&id, "alt", &p, Carrier::VisibleB64);
+    let reply_b64 = format!("> {quoted_hex}\nneu");
+    let reply_hex = format!("> {quoted_b64}\nneu");
     vec![
         mk("lite-ok", ok, good.clone(), "authenticated:signed-by-agent"),
         mk(
@@ -86,6 +103,30 @@ fn build() -> Vec<Vector> {
             "lite-compact-visible",
             ok,
             sign_text(&id, ok, &pc, Carrier::Visible),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-visible-b64",
+            ok,
+            b64.clone(),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-compact-visible-b64",
+            ok,
+            sign_text(&id, ok, &pc, Carrier::VisibleB64),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-quoted-hex-line-then-b64-line",
+            &reply_b64,
+            sign_text(&id, &reply_b64, &p, Carrier::VisibleB64),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-quoted-b64-line-then-hex-line",
+            &reply_hex,
+            sign_text(&id, &reply_hex, &p, Carrier::Visible),
             "authenticated:signed-by-agent",
         ),
         mk(
@@ -128,6 +169,24 @@ fn build() -> Vec<Vector> {
             "neg-visible-hex-with-space",
             ok,
             spaced_hex,
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-visible-b64-padding",
+            ok,
+            b64_padded,
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-visible-b64-space",
+            ok,
+            b64_spaced,
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-visible-b64-nonzero-spare-bits",
+            ok,
+            b64_spare_bits,
             "unverified:envelope-corrupt",
         ),
         mk(

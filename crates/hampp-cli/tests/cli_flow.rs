@@ -825,3 +825,26 @@ fn compact_header_is_shorter_verifies_and_is_opt_in() {
         }
     }
 }
+
+#[test]
+fn base64url_visible_line_is_shorter_than_hex_and_verifies() {
+    let dir = tempfile::tempdir().unwrap();
+    let (ka, pa) = keygen(dir.path(), "alice");
+    let hexline = sign(&ka, "Hallo", &["--visible"]);
+    let b64 = sign(&ka, "Hallo", &["--visible-b64"]);
+    let compact = sign(&ka, "Hallo", &["--visible-b64", "--compact"]);
+    assert!(b64.contains("\n[hampp1u:") && b64.len() < hexline.len());
+    assert!(compact.len() < b64.len());
+    for msg in [b64, compact] {
+        hampp()
+            .args(["verify", "--pubkey", &pa])
+            .write_stdin(msg)
+            .assert()
+            .code(0);
+    }
+    hampp()
+        .args(["sign", "--key", &ka, "--visible", "--visible-b64"])
+        .write_stdin("x")
+        .assert()
+        .failure();
+}

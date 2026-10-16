@@ -43,19 +43,56 @@ def extract(text: str):
     return visible, "ok", data[2:-2]
 
 
+B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+
+def b64url_encode(data: bytes) -> str:
+    bits = "".join(f"{b:08b}" for b in data)
+    bits += "0" * (-len(bits) % 6)
+    return "".join(B64URL[int(bits[i:i + 6], 2)] for i in range(0, len(bits), 6))
+
+
+def b64url_decode(body: str):
+    """Strict RFC 4648 section 5 without padding: the alphabet only, and re-encoding must give the
+    same string (rules out padding, whitespace, non-zero unused bits)."""
+    if len(body) % 4 == 1 or any(c not in B64URL for c in body):
+        return None
+    bits = "".join(f"{B64URL.index(c):06b}" for c in body)
+    data = bytes(int(bits[i:i + 8], 2) for i in range(0, len(bits) - len(bits) % 8, 8))
+    return data if b64url_encode(data) == body else None
+
+
+def decode_line(line: str):
+    """One visible line `[hampp1:<hex>]` or `[hampp1u:<base64url>]` -> payload bytes or None."""
+    if line.startswith("[hampp1u:"):
+        body, strict = line[9:-1], "b64"
+    else:
+        body, strict = line[8:-1], "hex"
+    if strict == "hex":
+        # one spelling: lower-case hex digits only (bytes.fromhex would accept spaces and upper case)
+        if any(c not in "0123456789abcdef" for c in body) or len(body) % 2:
+            return None
+        data = bytes.fromhex(body)
+    else:
+        data = b64url_decode(body)
+        if data is None:
+            return None
+    if len(data) < 2 or crc16(data[:-2]) != int.from_bytes(data[-2:], "big"):
+        return None
+    return data[:-2]
+
+
 def extract_visible(text: str):
     t = text.rstrip(WHITE_SPACE)
-    i = t.rfind("\n[hampp1:")
-    if not t.endswith("]") or i < 0:
+    if not t.endswith("]"):
         return text, "missing", None
-    body = t[i + 9:-1]
-    # one spelling: lower-case hex digits only (bytes.fromhex would accept spaces and upper case)
-    if any(c not in "0123456789abcdef" for c in body) or len(body) % 2:
+    i = max(t.rfind("\n[hampp1:"), t.rfind("\n[hampp1u:"))  # the LAST line wins
+    if i < 0:
+        return text, "missing", None
+    payload = decode_line(t[i + 1:])
+    if payload is None:
         return t[:i], "corrupt", None
-    data = bytes.fromhex(body)
-    if len(data) < 2 or crc16(data[:-2]) != int.from_bytes(data[-2:], "big"):
-        return t[:i], "corrupt", None
-    return t[:i], "ok", data[:-2]
+    return t[:i], "ok", payload
 
 
 def varint(buf, i):

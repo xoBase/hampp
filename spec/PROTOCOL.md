@@ -68,6 +68,12 @@ envelope. START without END, wrong symbols, length or CRC: corrupt envelope.
 **Visible fallback.** The text, trailing whitespace removed, then `"\n[hampp1:" || hex(header || crc16(header)) || "]"`
 at the very end. `hex` is lower-case digits `0-9a-f` only, with no whitespace; anything else in the body is a corrupt envelope (one spelling per message). The zero-width carrier is tried first.
 
+**Visible fallback, base64url (version 0.5).** The same line with a different body: `"\n[hampp1u:" || b64url(header || crc16(header)) || "]"`. `b64url` is RFC 4648
+section 5 (`A-Za-z0-9-_`), **without padding**, and strict: any other character (including `=`, `+`, `/` and whitespace), a length of 4n+1 characters, or non-zero unused
+trailing bits make the envelope corrupt, so a byte string has exactly one spelling. The tag `[hampp1u:` differs from `[hampp1:` because hex digits are a subset
+of the base64url alphabet, so one prefix would be ambiguous. When both tags occur, the LAST one at the end of the text is the envelope (a quoted older line of either kind
+stays part of the text). A verifier older than 0.5 does not know the tag and reports `unverified:envelope-missing`.
+
 ## 4. Verification algorithm (in this order)
 
 1. Extract the envelope: missing -> `unverified:envelope-missing`; corrupt -> `unverified:envelope-corrupt`.

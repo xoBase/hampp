@@ -115,6 +115,10 @@ enum Cmd {
         /// Use the visible fallback carrier instead of zero-width characters.
         #[arg(long)]
         visible: bool,
+        /// Visible line with a base64url body, `[hampp1u:...]` (fewer characters and tokens
+        /// than hex; a verifier older than 0.5 reports `unverified:envelope-missing`).
+        #[arg(long, conflicts_with = "visible")]
+        visible_b64: bool,
         #[arg(long)]
         session: Option<PathBuf>,
         /// Protection level to claim (default: the highest this key offers).
@@ -260,7 +264,7 @@ fn capabilities(json: bool) {
             "software_version": version,
             "protocol_versions": [1],
             "suites": [hampp_core::SUITE_ED25519_SHA256, hampp_core::SUITE_ECDSA_P256_SHA256],
-            "carriers": ["zero-width", "visible"],
+            "carriers": ["zero-width", "visible", "visible-b64"],
             "profiles": ["lite", "full", "verify-only"],
             "protection": protection,
             "key_protection": avail.iter().filter(|(_, r)| r.is_ok()).map(|(p, _)| if *p == Protection::Software { "software" } else { "tpm" }).collect::<Vec<_>>(),
@@ -271,7 +275,7 @@ fn capabilities(json: bool) {
         println!("hampp {version}");
         println!("protocol:       HAMPP/1");
         println!("suites:         1 (Ed25519 + SHA-256), 2 (ECDSA P-256 + SHA-256)");
-        println!("carriers:       zero-width, visible");
+        println!("carriers:       zero-width, visible, visible-b64");
         println!("profiles:       lite, full, verify-only");
         for (p, r) in &avail {
             match r {
@@ -373,6 +377,7 @@ fn run(cli: Cli) -> Res<ExitCode> {
             file,
             key,
             visible,
+            visible_b64,
             session,
             protection,
             compact,
@@ -380,7 +385,9 @@ fn run(cli: Cli) -> Res<ExitCode> {
             let text = read_input(&file)?;
             let (signer, _meta) = load_signer(&key_path(&key))?;
             let level = protection.map(Protection::from).unwrap_or(signer.level());
-            let carrier = if visible {
+            let carrier = if visible_b64 {
+                Carrier::VisibleB64
+            } else if visible {
                 Carrier::Visible
             } else {
                 Carrier::ZeroWidth

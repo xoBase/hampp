@@ -72,18 +72,22 @@ fn public_key(path: &str) -> PyResult<String> {
 
 /// Signs `text` in the Lite profile (one message, no session). `protection` is the level to
 /// claim; by default the highest this key offers. Claiming more than the key offers is an error.
+/// `visible_b64=True` uses the `[hampp1u:...]` line (base64url) instead of zero-width characters.
 /// `compact=True` uses the 25 bytes shorter Lite header (verifiers older than 0.5 cannot read it).
 #[pyfunction]
-#[pyo3(signature = (text, key_path, visible=false, protection=None, compact=false))]
+#[pyo3(signature = (text, key_path, visible=false, protection=None, compact=false, visible_b64=false))]
 fn sign(
     text: &str,
     key_path: &str,
     visible: bool,
     protection: Option<&str>,
     compact: bool,
+    visible_b64: bool,
 ) -> PyResult<String> {
     let (signer, _) = load(key_path)?;
-    let carrier = if visible {
+    let carrier = if visible_b64 {
+        Carrier::VisibleB64
+    } else if visible {
         Carrier::Visible
     } else {
         Carrier::ZeroWidth

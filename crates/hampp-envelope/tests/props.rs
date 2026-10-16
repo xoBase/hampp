@@ -43,6 +43,50 @@ proptest! {
     }
 
     #[test]
+    fn visible_b64_roundtrip(
+        text in plain_text(),
+        payload in proptest::collection::vec(any::<u8>(), 0..300),
+    ) {
+        let signed = embed_visible_b64(&text, &payload);
+        let got = extract_visible(&signed);
+        prop_assert_eq!(got.visible, text.trim_end());
+        prop_assert_eq!(got.envelope, Envelope::Present(payload.clone()));
+        prop_assert_eq!(extract_any(&signed).envelope, Envelope::Present(payload));
+    }
+
+    /// One spelling: whatever body the extractor accepts must be the canonical encoding of the
+    /// payload it returns (upper-case hex, padding, spare bits, whitespace are all rejected).
+    #[test]
+    fn an_accepted_visible_line_is_the_canonical_spelling(
+        hexish in "[0-9a-fA-F ]{0,40}",
+        b64ish in "[A-Za-z0-9_=+/ -]{0,40}",
+    ) {
+        for (prefix, body, b64) in [("[hampp1:", hexish, false), ("[hampp1u:", b64ish, true)] {
+            let text = format!("x\n{prefix}{body}]");
+            if let Envelope::Present(p) = extract_visible(&text).envelope {
+                let canonical = if b64 { embed_visible_b64("x", &p) } else { embed_visible("x", &p) };
+                prop_assert_eq!(canonical, text);
+            }
+        }
+    }
+
+    #[test]
+    fn other_spellings_of_a_valid_line_are_corrupt(payload in proptest::collection::vec(any::<u8>(), 0..64)) {
+        let hexl = embed_visible("x", &payload);
+        let upper = format!("x\n[hampp1:{}]", hexl["x\n[hampp1:".len()..hexl.len() - 1].to_uppercase());
+        if upper != hexl {
+            prop_assert!(matches!(extract_visible(&upper).envelope, Envelope::Corrupt(_)));
+        }
+        let b64 = embed_visible_b64("x", &payload);
+        let padded = b64.replacen(']', "=]", 1);
+        prop_assert!(matches!(extract_visible(&padded).envelope, Envelope::Corrupt(_)));
+        let std_alphabet = b64.replace('-', "+").replace('_', "/");
+        if std_alphabet != b64 {
+            prop_assert!(matches!(extract_visible(&std_alphabet).envelope, Envelope::Corrupt(_)));
+        }
+    }
+
+    #[test]
     fn strip_all_is_idempotent_and_leaves_no_member(text in "\\PC{0,200}", soup in alphabet_soup()) {
         for s in [text, soup] {
             let once = strip_all(&DEFAULT, &s);
@@ -56,6 +100,7 @@ proptest! {
         for s in [text, soup] {
             let _ = extract(&s);
             let _ = extract_visible(&s);
+            let _ = extract_visible(&format!("{s}\n[hampp1u:{s}]"));
             let _ = extract_any(&s);
         }
     }

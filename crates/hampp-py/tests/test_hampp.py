@@ -144,3 +144,14 @@ def test_compact_header_is_shorter_and_verifies(tmp_path, alg):
         compact = hampp.sign("Hallo", key, visible=visible, compact=True)
         assert len(compact) < len(long)
         assert hampp.verify(compact, pub)["code"] == "authenticated:signed-by-agent"
+
+
+def test_base64url_visible_line(tmp_path):
+    key = str(tmp_path / "k.json")
+    pub = hampp.generate_key("a", key)
+    hexline = hampp.sign("Ja.", key, visible=True)
+    msg = hampp.sign("Ja.", key, visible_b64=True)
+    assert "\n[hampp1u:" in msg and len(msg) < len(hexline)
+    assert hampp.verify(msg, pub)["code"] == "authenticated:signed-by-agent"
+    assert hampp.strip(msg) == "Ja."
+    assert hampp.verify(msg.replace("]", "=]"), pub)["code"] == "unverified:envelope-corrupt"

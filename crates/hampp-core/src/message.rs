@@ -4,7 +4,7 @@ use crate::{
     effective_protection, payload_hash, verify_signature, Protection, SignError, Signer,
     SigningIdentity, SUITE_ECDSA_P256_SHA256, SUITE_ED25519_SHA256,
 };
-use hampp_envelope::{embed, embed_visible, extract_any, Envelope};
+use hampp_envelope::{embed, embed_visible, embed_visible_b64, extract_any, Envelope};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
@@ -48,6 +48,8 @@ impl SignParams {
 pub enum Carrier {
     ZeroWidth,
     Visible,
+    /// Visible line with a base64url body (`[hampp1u:...]`), fewer characters and tokens than hex.
+    VisibleB64,
 }
 
 /// Signs with any [`Signer`] and the protection level in `p`. Fails with
@@ -88,6 +90,7 @@ pub fn render(visible: &str, h: &Header, carrier: Carrier) -> String {
     match carrier {
         Carrier::ZeroWidth => embed(visible, &bytes).expect("header always fits in an envelope"),
         Carrier::Visible => embed_visible(visible, &bytes),
+        Carrier::VisibleB64 => embed_visible_b64(visible, &bytes),
     }
 }
 
