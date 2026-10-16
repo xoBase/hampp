@@ -28,6 +28,10 @@ pub fn extract_visible(text: &str) -> Extracted {
         visible: visible.clone(),
         envelope: Envelope::Corrupt(e),
     };
+    // Exactly one spelling: lower-case hex, no whitespace (hex::decode alone accepts upper case).
+    if !body.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return corrupt(EnvelopeError::Malformed);
+    }
     let Ok(bytes) = hex::decode(body) else {
         return corrupt(EnvelopeError::Malformed);
     };
@@ -76,6 +80,26 @@ mod tests {
     fn altered_hex_is_corrupt() {
         let s = embed_visible("Hallo", b"abc").replace("616263", "616264");
         assert!(matches!(extract_visible(&s).envelope, Envelope::Corrupt(_)));
+    }
+
+    #[test]
+    fn upper_case_and_spaced_hex_are_corrupt() {
+        let s = embed_visible("Hallo", &[0xab, 0xcd]);
+        assert_eq!(
+            extract_visible(&s).envelope,
+            Envelope::Present(vec![0xab, 0xcd])
+        );
+        let up = s.replace("abcd", "ABCD");
+        assert_ne!(up, s);
+        assert!(matches!(
+            extract_visible(&up).envelope,
+            Envelope::Corrupt(_)
+        ));
+        let sp = s.replace("abcd", "ab cd");
+        assert!(matches!(
+            extract_visible(&sp).envelope,
+            Envelope::Corrupt(_)
+        ));
     }
 
     #[test]

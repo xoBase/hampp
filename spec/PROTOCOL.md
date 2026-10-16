@@ -53,7 +53,7 @@ and after END is the visible text (so quoted older envelopes stay part of the te
 envelope. START without END, wrong symbols, length or CRC: corrupt envelope.
 
 **Visible fallback.** The text, trailing whitespace removed, then `"\n[hampp1:" || hex(header || crc16(header)) || "]"`
-at the very end. The zero-width carrier is tried first.
+at the very end. `hex` is lower-case digits `0-9a-f` only, with no whitespace; anything else in the body is a corrupt envelope (one spelling per message). The zero-width carrier is tried first.
 
 ## 4. Verification algorithm (in this order)
 

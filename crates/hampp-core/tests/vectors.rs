@@ -43,6 +43,18 @@ fn build() -> Vec<Vector> {
         h.signature = id.sign(&h.signing_input(&payload_hash(ok)));
         render(ok, &h, Carrier::ZeroWidth)
     };
+    let visible = sign_text(&id, ok, &p, Carrier::Visible);
+    let hex_body = visible
+        .rsplit("[hampp1:")
+        .next()
+        .unwrap()
+        .trim_end_matches(']')
+        .to_string();
+    let upper_hex = visible.replace(&hex_body, &hex_body.to_uppercase());
+    let spaced_hex = visible.replace(
+        &hex_body,
+        &format!("{} {}", &hex_body[..20], &hex_body[20..]),
+    );
     vec![
         mk("lite-ok", ok, good.clone(), "authenticated:signed-by-agent"),
         mk(
@@ -91,6 +103,18 @@ fn build() -> Vec<Vector> {
             "neg-reserved-flag-bit",
             ok,
             reserved_bit,
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-visible-upper-case-hex",
+            ok,
+            upper_hex,
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-visible-hex-with-space",
+            ok,
+            spaced_hex,
             "unverified:envelope-corrupt",
         ),
         mk(

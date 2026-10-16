@@ -48,10 +48,11 @@ def extract_visible(text: str):
     i = t.rfind("\n[hampp1:")
     if not t.endswith("]") or i < 0:
         return text, "missing", None
-    try:
-        data = bytes.fromhex(t[i + 9:-1])
-    except ValueError:
+    body = t[i + 9:-1]
+    # one spelling: lower-case hex digits only (bytes.fromhex would accept spaces and upper case)
+    if any(c not in "0123456789abcdef" for c in body) or len(body) % 2:
         return t[:i], "corrupt", None
+    data = bytes.fromhex(body)
     if len(data) < 2 or crc16(data[:-2]) != int.from_bytes(data[-2:], "big"):
         return t[:i], "corrupt", None
     return t[:i], "ok", data[:-2]
