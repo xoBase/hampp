@@ -3,7 +3,7 @@
 All notable changes. The protocol stays HAMPP/1 (header version byte 1); the crate and tool version is what changes.
 Releases before 0.5.0 are listed briefly for orientation.
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-10-16)
 
 Smaller signatures, all **opt-in** and additive. Existing messages stay valid and the tools still sign in the old format by default.
 
