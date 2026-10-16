@@ -36,6 +36,13 @@ fn build() -> Vec<Vector> {
     let good = sign_text(&id, ok, &p, Carrier::ZeroWidth);
     let strip = |s: &str| hampp_envelope::strip_all(&hampp_envelope::DEFAULT, s);
     let other = SigningIdentity::from_seed("agent-43", OTHER_SEED, INSTANCE);
+    // A correctly signed header whose flags carry a reserved bit (bit 4): a decode failure, never valid.
+    let reserved_bit = {
+        let mut h = sign_header(&id, ok, &p);
+        h.flags |= 0x10;
+        h.signature = id.sign(&h.signing_input(&payload_hash(ok)));
+        render(ok, &h, Carrier::ZeroWidth)
+    };
     vec![
         mk("lite-ok", ok, good.clone(), "authenticated:signed-by-agent"),
         mk(
@@ -78,6 +85,12 @@ fn build() -> Vec<Vector> {
             "neg-truncated",
             ok,
             good.chars().take(good.chars().count() - 3).collect(),
+            "unverified:envelope-corrupt",
+        ),
+        mk(
+            "neg-reserved-flag-bit",
+            ok,
+            reserved_bit,
             "unverified:envelope-corrupt",
         ),
         mk(

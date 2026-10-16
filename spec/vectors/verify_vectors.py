@@ -58,23 +58,43 @@ def extract_visible(text: str):
 
 
 def varint(buf, i):
+    """Canonical unsigned LEB128, at most 10 bytes; None when truncated or not canonical."""
     r, shift = 0, 0
     while True:
+        if i >= len(buf) or shift > 63:
+            return None
         b = buf[i]
         i += 1
+        if shift == 63 and b & 0x7F > 1:
+            return None
         r |= (b & 0x7F) << shift
         if not b & 0x80:
+            if b == 0 and shift > 0:
+                return None  # redundant trailing zero group
             return r, i
         shift += 7
 
 
 def parse_header(payload: bytes):
+    """spec/PROTOCOL.md section 2. Returns the fields, or None for any decode failure
+    (reserved flag bits, reserved protection value, truncation, bad varint, trailing bytes)."""
+    if len(payload) < 21:
+        return None
     flags, suite = payload[3], payload[4]
+    if flags & ~0b111 or (flags >> 1) & 3 == 3:
+        return None
     key_id, session_id = payload[5:13], payload[13:21]
-    seq, i = varint(payload, 21)
-    ts, i = varint(payload, i)
-    prev, sig = payload[i:i + 16], payload[i + 16:i + 80]
-    return flags, suite, key_id, session_id, seq, ts, prev, sig
+    a = varint(payload, 21)
+    if a is None:
+        return None
+    seq, i = a
+    b = varint(payload, i)
+    if b is None:
+        return None
+    ts, i = b
+    if len(payload) != i + 80:
+        return None
+    return flags, suite, key_id, session_id, seq, ts, payload[i:i + 16], payload[i + 16:i + 80]
 
 
 WHITE_SPACE = "\u0009\u000a\u000b\u000c\u000d\u0020\u0085\u00a0\u1680" + "".join(chr(c) for c in range(0x2000, 0x200B)) + "\u2028\u2029\u202f\u205f\u3000"
@@ -99,7 +119,10 @@ def verify(text: str, pubkey: bytes) -> str:
         return "unverified:envelope-corrupt"
     if payload[:2] != b"HP" or payload[2] != 1:
         return "invalid:unsupported-version"
-    flags, suite, key_id, session_id, seq, ts, prev, sig = parse_header(payload)
+    parsed = parse_header(payload)
+    if parsed is None:
+        return "unverified:envelope-corrupt"
+    flags, suite, key_id, session_id, seq, ts, prev, sig = parsed
     if suite != 1:
         return "invalid:unsupported-suite"
     if hashlib.sha256(pubkey).digest()[:8] != key_id:
@@ -154,9 +177,10 @@ def verify_protection(text: str, pubkey: bytes, registry=None, minimum=None):
         return "unverified:envelope-corrupt", None, []
     if payload[:2] != b"HP" or payload[2] != 1:
         return "invalid:unsupported-version", None, []
-    flags, suite, key_id, session_id, seq, ts, prev, sig = parse_header(payload)
-    if flags & ~0b111 or (flags >> 1) & 3 == 3:
+    parsed = parse_header(payload)
+    if parsed is None:
         return "unverified:envelope-corrupt", None, []
+    flags, suite, key_id, session_id, seq, ts, prev, sig = parsed
     if suite not in (1, 2):
         return "invalid:unsupported-suite", None, []
     if hashlib.sha256(pubkey).digest()[:8] != key_id:
@@ -245,9 +269,10 @@ def check_handshake_p256(path: str) -> int:
     for m in v["messages"]:
         text = bytes.fromhex(m["signed_text_hex"]).decode("utf-8")
         visible, st, payload = extract(text)
-        ok = st == "ok"
+        parsed = parse_header(payload) if st == "ok" else None
+        ok = parsed is not None
         if ok:
-            flags, suite, key_id, session_id, seq, ts, hprev, sig = parse_header(payload)
+            flags, suite, key_id, session_id, seq, ts, hprev, sig = parsed
             ph = payload_hash(visible)
             inp = signing_input(flags, suite, key_id, session_id, seq, ts, ph, hprev)
             ok = (verify_p256(alice_pk, sig, inp) and suite == 2 and flags & 1 == 1
@@ -317,9 +342,10 @@ def check_handshake(path: str) -> int:
     for m in v["messages"]:
         text = bytes.fromhex(m["signed_text_hex"]).decode("utf-8")
         visible, st, payload = extract(text)
-        ok = st == "ok"
+        parsed = parse_header(payload) if st == "ok" else None
+        ok = parsed is not None
         if ok:
-            flags, suite, key_id, session_id, seq, ts, hprev, sig = parse_header(payload)
+            flags, suite, key_id, session_id, seq, ts, hprev, sig = parsed
             ph = payload_hash(visible)
             inp = signing_input(flags, suite, key_id, session_id, seq, ts, ph, hprev)
             try:
