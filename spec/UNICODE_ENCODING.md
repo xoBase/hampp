@@ -35,6 +35,40 @@ suggests. Measure it with your own tokenizer before relying on it. Overhead with
 measured yet.
 CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) covers `len | payload`.
 
+## Smaller signatures (0.5)
+
+Three opt-in options, measured on 2026-10-16 with the 0.5 code (Lite, Ed25519 and P-256 give identical sizes; timestamp of 2026, a 5-byte varint).
+The first rows repeat the figures above for comparison (the visible line is 228 bytes including its newline; the 227 above is the line without it).
+
+| Carrier / option | Header | Added characters | Added bytes (UTF-8) |
+|---|---|---|---|
+| zero-width, long header (default) | 107 B | 446 | 1338 |
+| zero-width, `--compact` | 82 B | 346 | 1038 |
+| `--visible` (hex line, inline) | 107 B | 228 | 228 |
+| `--visible --compact` | 82 B | 178 | 178 |
+| `--visible-b64` (base64url line, inline) | 107 B | 157 | 157 |
+| `--visible-b64 --compact` | 82 B | 123 | 123 |
+| `--detach` (b64 line alone, long header) | 107 B | 156 | 156 |
+| `--detach --compact` (b64 line alone) | 82 B | 122 | 122 |
+| `--detach --visible --compact` (hex line alone) | 82 B | 177 | 177 |
+
+For comparison, a bare Ed25519 signature in base64 is 88 characters and carries no key id, suite, timestamp or protection level.
+
+**Token estimates (not Claude's tokenizer).** Counted with llama.cpp's tokenizer on five open vocabularies (Llama 3, Qwen2, GPT-2, Gemma 4, DeepSeek LLM), mean over
+50 real signatures (25 Ed25519 and 25 P-256), the signature string only. They show the direction, not the cost for any given model; measure with your own tokenizer.
+
+| Tokenizer | zero-width long | zero-width compact | hex line long | hex line compact | b64url line long | b64url line compact |
+|---|---|---|---|---|---|---|
+| Llama 3 | 440 | 388 | 119 | 102 | 94 | 86 |
+| Qwen2 | 538 | 488 | 207 | 156 | 98 | 89 |
+| GPT-2 | 623 | 574 | 112 | 107 | 101 | 93 |
+| Gemma 4 | 327 | 302 | 208 | 156 | 92 | 85 |
+| DeepSeek LLM | 498 | 484 | 208 | 157 | 97 | 90 |
+
+Zero-width characters are the most expensive carrier by far. Some tokenizers (Qwen2, Gemma, DeepSeek in this run) split hex nearly digit by digit, so base64url saves 14 to 46 percent
+of the tokens of the compact hex line. Base64url bodies contain `_` and `-`; a header always starts with `HP` 0x01, i.e. the body starts with `SFA`, so a `_` cannot open Markdown emphasis
+right after the colon (`transport_matrix.rs` passes 400 signatures through a Markdown text extractor without loss, for both bodies).
+
 ## Measured offline
 
 Checked on 2026-10-06 with Python `unicodedata`: all six code points are unchanged by

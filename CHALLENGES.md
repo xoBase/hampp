@@ -28,7 +28,7 @@ an attacker can always strip the envelope (the result is then `unverified`, by d
 | Can you make a message claim a protection level its key does not have, or lower a receiver's `--min-protection` policy? | `scenarios/16_*`, `19_*`, `crates/hampp-core/tests/protection_vectors.rs` | a `bound` message or a policy pass that should have been refused or downgraded |
 | Can an instance be cloned? | not preventable at present | a way to detect or limit it without hardware attestation |
 | Can a copied key be told from the original agent? | not preventable at present | same as above |
-| Can you reduce the overhead? | measured: **446 invisible characters (1338 bytes UTF-8) per message**, independent of the text length | a smaller encoding that survives the same transports |
+| Can you reduce the overhead? | measured: **446 invisible characters (1338 bytes UTF-8) per message**, independent of the text length | a smaller encoding that survives the same transports (0.5 already offers `--compact`, `--visible-b64` and `--detach`; see `spec/UNICODE_ENCODING.md`) |
 | Can you design a better encoding? | `spec/UNICODE_ENCODING.md` | one that passes `spec/vectors/` or a documented successor to them |
 
 ## How to submit an attack

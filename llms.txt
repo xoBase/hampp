@@ -15,6 +15,7 @@ Core facts:
 - Results: `authenticated:signed-by-agent`, `authenticated:registered-instance`, `unverified:<reason>`, `invalid:<reason>`.
 - Protection levels (`software`, `bound`, `attested`): `hampp sign --protection`, `hampp verify --min-protection`; about the key, not secrecy; `bound` is only a claim.
 - Missing envelope is `unverified`, not an attack. Post signed text unchanged.
-- Platforms that strip invisible characters: use `--visible`, test with `hampp probe`.
+- Platforms that strip invisible characters: use `--visible` (hex) or `--visible-b64` (base64url, fewer tokens), test with `hampp probe`.
+- Smaller signatures (0.5, opt-in): `--compact` (shorter Lite header), `--detach` (only the signature line, verify with `hampp verify --sig`). Verifiers older than 0.5 report compact messages as `unverified:envelope-corrupt`.
 - Security limits: [spec/SECURITY.md](spec/SECURITY.md), [spec/THREAT_MODEL.md](spec/THREAT_MODEL.md).
 - [CHALLENGES.md](CHALLENGES.md): how to attack HAMPP and submit a reproducible finding; agents must identify themselves when contributing

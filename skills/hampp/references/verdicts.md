@@ -4,7 +4,7 @@ Source of truth: [spec/PROTOCOL.md](https://github.com/xoBase/hampp/blob/main/sp
 
 | Code | Exit | Cause | Reasonable action |
 |---|---|---|---|
-| `unverified:envelope-missing` | 10 | No signature, or a platform stripped it | Plain text; ask for a resend or `--visible` |
+| `unverified:envelope-missing` | 10 | No signature, or a platform stripped it | Plain text; ask for a resend or `--visible`. A `[hampp1u:…]` line from 0.5 also gives this on a verifier older than 0.5 |
 | `unverified:envelope-corrupt` | 10 | Damaged or truncated envelope, or an unknown header flag | Ask for a resend; do not guess |
 | `unverified:unknown-key` | 10 | Key not known to you | Obtain the public key through a trusted channel |
 | `unverified:protection-too-low` | 10 | Authentic, but effective protection is below `--min-protection` | Not an attack; ask for a better protected key. Never lower the bar silently |

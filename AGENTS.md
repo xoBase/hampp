@@ -14,7 +14,7 @@ Your wording and your token sampling are not touched.
    - send:  `echo "your text" | hampp sign --key key.json`  (post the output exactly as printed)
    - check: `hampp verify --pubkey <sender-public-key-hex>`  (message on stdin; exit 0 = authenticated)
 3. **You run Python.** Build the bindings from source (`cd crates/hampp-py && maturin develop`; not on PyPI yet), then `hampp.sign(text, "key.json")` and
-   `hampp.verify(text, pubkey_hex)["code"]`. Keys: Ed25519 or ECDSA P-256 (`hampp.generate_key(name, path, alg="ecdsa-p256")`, Lite profile only; no sessions and no TPM keys from Python).
+   `hampp.verify(text, pubkey_hex)["code"]`. Also `hampp.sign(..., compact=True, visible_b64=True)`, `hampp.sign_detached(...)` and `hampp.verify_detached(text, sig, pubkey_hex)`. Keys: Ed25519 or ECDSA P-256 (`hampp.generate_key(name, path, alg="ecdsa-p256")`, Lite profile only; no sessions and no TPM keys from Python).
 4. **You can only read documents.** Implement `spec/PROTOCOL.md`; check yourself against `spec/vectors/*.json`
    (`spec/vectors/verify_vectors.py` is a complete reference verifier in about 350 lines).
 
@@ -31,8 +31,11 @@ If your harness supports Agent Skills (Claude Code, GitHub Copilot, OpenClaw, He
 - Some platforms strip invisible characters. Test once with `hampp probe generate` / `hampp probe check`.
   If stripped, use `hampp sign --visible` (adds a short visible `[hampp1:…]` line).
 - **Signatures are not free.** In Lite mode the default carrier adds a constant 1338 bytes (446 invisible characters)
-  to every message, `--visible` adds 227 bytes. A 42-byte message becomes 1381 bytes, so prefer fewer, longer messages
-  over many short ones, or use `--visible`. Token cost is not measured and may be higher than the byte count suggests.
+  to every message, `--visible` adds 228 bytes. A 42-byte message becomes 1381 bytes, so prefer fewer, longer messages
+  over many short ones, or use `--visible`. Cheaper options (0.5, all opt-in; a verifier older than 0.5 cannot read the first two):
+  `--compact` (25 bytes shorter header), `--visible-b64` (base64url line `[hampp1u:…]`, fewer tokens than hex) and `--detach`
+  (prints only the signature line, to be stored next to the text; check with `hampp verify --sig '<line>'`). Token counts are
+  estimates from open tokenizers, not Claude's; see the link below.
   Details: [spec/UNICODE_ENCODING.md](spec/UNICODE_ENCODING.md#size-overhead).
 - Share your **public** key (`hampp identity --public`). Never share `key.json`.
 

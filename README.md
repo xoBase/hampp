@@ -14,9 +14,11 @@ that strips invisible characters also strips the proof (the message then verifie
 Test a platform with `hampp probe`; if it strips, use the visible fallback `hampp sign --visible`.
 Measurements: [spec/UNICODE_ENCODING.md](spec/UNICODE_ENCODING.md), platform list: [spec/PLATFORMS.md](spec/PLATFORMS.md).
 
-The envelope has a fixed size, whatever the text length. In Lite mode it adds 1338 bytes (zero-width) or 227 bytes
-(`--visible`) per message, so it hurts most on short messages (a 42-byte message becomes 1381 bytes). Token cost for an
-LLM is not measured yet. See [size overhead](spec/UNICODE_ENCODING.md#size-overhead).
+The envelope has a fixed size, whatever the text length. In Lite mode it adds 1338 bytes (zero-width) or 228 bytes
+(`--visible`) per message, so it hurts most on short messages (a 42-byte message becomes 1381 bytes). Since 0.5 three opt-in
+options make it smaller: `--compact` (shorter Lite header, 25 bytes less), `--visible-b64` (base64url instead of hex, about 30 percent fewer
+characters and 10 to 50 percent fewer tokens in the tokenizers we measured) and `--detach` (only the signature line, to store next to the text,
+for example in a JSON field). With all three the signature is 122 characters. See [size overhead](spec/UNICODE_ENCODING.md#size-overhead).
 
 ## Quick start (shell)
 
@@ -30,7 +32,8 @@ hampp verify signed.txt --pubkey <alice-public-key-hex>   # exit 0 authenticated
 Other ways to use it, depending on what an agent can do (no code, shell, Python, spec only): [AGENTS.md](AGENTS.md).
 Python bindings (Lite profile; Ed25519 and ECDSA P-256 software keys, no sessions and no TPM keys; not on PyPI yet): build them with
 `cd crates/hampp-py && maturin develop`, then `hampp.generate_key("alice", "alice.json", alg="ecdsa-p256")` (default `ed25519`),
-`hampp.sign(text, "alice.json")` and `hampp.verify(text, pubkey_hex)["code"]`. `verify(..., min_protection="bound")` applies a receiver policy.
+`hampp.sign(text, "alice.json")` and `hampp.verify(text, pubkey_hex)["code"]`. Detached: `sig = hampp.sign_detached(body, "alice.json", compact=True)`,
+`hampp.verify_detached(body, sig, pubkey_hex)["code"]` (CLI: `hampp sign --detach`, `hampp verify --sig '<line>'`). `verify(..., min_protection="bound")` applies a receiver policy.
 
 ## Protection levels
 
@@ -113,12 +116,12 @@ instruction text for your agent: install only a copy you have reviewed (pin a re
 - Test vectors in [`spec/vectors/`](spec/vectors/) and an independent Python verifier that does not use the Rust code:
   `uv run --with cryptography python spec/vectors/verify_vectors.py spec/vectors/lite.json`
   (also `--handshake spec/vectors/handshake.json`, `--handshake-p256 spec/vectors/handshake_p256.json` and
-  `--protection spec/vectors/protection.json`).
+  `--protection spec/vectors/protection.json` and, new in 0.5, `--detached spec/vectors/detached.json`).
 
 ## Status and limits
 
 Experimental and **not audited**. Implemented: Ed25519 and ECDSA P-256 signatures over messages, the zero-width envelope and a
-visible fallback, per-message protection levels (with TPM-backed keys as an optional build), a signed handshake, sessions with replay
+visible fallback (hex or base64url), a compact Lite header and detached signatures (0.5), per-message protection levels (with TPM-backed keys as an optional build), a signed handshake, sessions with replay
 and ordering checks, a trust registry, the `hampp` CLI with sidecar mode, and Python bindings.
 
 Not implemented (so please do not assume it): confidentiality (messages are signed, not encrypted); verified hardware attestation

@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-hampp-envelope  bytes <-> invisible characters, CRC, visible fallback   (no crypto)
+hampp-envelope  bytes <-> invisible characters, CRC, visible fallback (hex, base64url), detached lines   (no crypto)
       ^
 hampp-core      identity, key store, header, sign/verify (Ed25519 and
       ^         ECDSA P-256), protection levels, verdicts, registry,

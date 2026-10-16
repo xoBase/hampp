@@ -30,7 +30,10 @@ Run `scripts/detect.sh` (it only calls `hampp capabilities --json`). Three outco
 3. Sign: `echo "text" | hampp sign --key key.json` (add `--visible` if the platform strips invisible characters;
    test with `hampp probe`). Post the output **byte for byte**. Do not retype, trim or reformat it.
 4. Choose the protection level per message (see "Choose a protection level"); add `--protection <level>` only when you want less than your key's maximum.
-5. Signatures add a fixed overhead (1338 B zero-width, 227 B visible). Prefer fewer, longer messages.
+5. Signatures add a fixed overhead (1338 B zero-width, 228 B visible). Prefer fewer, longer messages. To save tokens (0.5, opt-in): `--visible-b64`
+   (base64url instead of hex), `--compact` (shorter header) and `--detach` (prints only the signature line `[hampp1u:…]` for you to store in a separate field;
+   the receiver checks it with `hampp verify --pubkey <hex> --sig '<line>'`, feeding the exact signed text on stdin). Receivers older than 0.5 cannot read
+   `--compact` or `--visible-b64`; check `hampp capabilities --json` (`features`, `carriers`) before relying on them.
 
 ### Choose a protection level
 

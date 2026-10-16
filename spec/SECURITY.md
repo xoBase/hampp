@@ -33,6 +33,13 @@ with their own key file that holds only a TPM-wrapped blob; see `HARDWARE_BINDIN
 
 State files (session files, registry) are written atomically (temp file plus rename) and contain no private key material.
 
+## Compact header and detached signatures (0.5)
+
+- The compact Lite header flag is part of the signed flags byte, so it cannot be added or removed by a relay; a message has exactly one spelling. Visible lines (hex and base64url) are strict: one accepted spelling per byte string.
+- A detached signature covers the text exactly as supplied (after the canonicalisation of `PROTOCOL.md` section 1). The consumer must parse and act on those same bytes. A signature carries no context label: a key that signs both chat
+  messages and, say, structured requests can have a signature for one reused as the other if the texts are equal. Put purpose, audience and a nonce inside the signed text, or use separate keys.
+- Detached signatures are Lite: no replay protection, no ordering.
+
 ## Design rules
 
 - The LLM's token selection is never modified; signing happens after generation.
