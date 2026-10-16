@@ -134,6 +134,16 @@ pub fn extract_visible(text: &str) -> Extracted {
     }
 }
 
+/// A detached envelope: exactly one bracketed line (`[hampp1:..]` or `[hampp1u:..]`), nothing
+/// before it, trailing whitespace allowed. `Missing`: not a HAMPP line at all.
+pub fn extract_detached(line: &str) -> Envelope {
+    match parse_line(line.trim_end()) {
+        None => Envelope::Missing,
+        Some(Ok(payload)) => Envelope::Present(payload),
+        Some(Err(e)) => Envelope::Corrupt(e),
+    }
+}
+
 /// Zero-width first, visible fallback second.
 pub fn extract_any(text: &str) -> Extracted {
     let zw = extract(text);
@@ -255,6 +265,29 @@ mod tests {
                 extract_visible(&t).envelope
             );
         }
+    }
+
+    #[test]
+    fn detached_line_is_exactly_one_line() {
+        for b64 in [false, true] {
+            let line = visible_line(&[0xab, 0xcd, 0xef], b64);
+            assert_eq!(
+                extract_detached(&line),
+                Envelope::Present(vec![0xab, 0xcd, 0xef])
+            );
+            assert_eq!(
+                extract_detached(&format!("{line}\r\n")),
+                Envelope::Present(vec![0xab, 0xcd, 0xef])
+            );
+            // leading text or a second line is not a detached envelope
+            assert_eq!(extract_detached(&format!("x{line}")), Envelope::Missing);
+            assert_eq!(extract_detached(&format!(" {line}")), Envelope::Missing);
+            assert!(matches!(
+                extract_detached(&format!("{line}\nmore")),
+                Envelope::Corrupt(_) | Envelope::Missing
+            ));
+        }
+        assert_eq!(extract_detached("hallo"), Envelope::Missing);
     }
 
     #[test]

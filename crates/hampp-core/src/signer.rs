@@ -14,6 +14,8 @@ pub enum SignError {
     SuiteMismatch { signer: u8, session: u8 },
     #[error("the compact header is only for sessionless messages (no session, seq 0, zero chain)")]
     CompactNotApplicable,
+    #[error("a detached signature is only for sessionless (Lite) messages")]
+    DetachedNeedsLite,
     #[error("signing backend: {0}")]
     Backend(String),
 }

@@ -74,6 +74,17 @@ trailing bits make the envelope corrupt, so a byte string has exactly one spelli
 of the base64url alphabet, so one prefix would be ambiguous. When both tags occur, the LAST one at the end of the text is the envelope (a quoted older line of either kind
 stays part of the text). A verifier older than 0.5 does not know the tag and reports `unverified:envelope-missing`.
 
+**Detached envelope (version 0.5, Lite only).** The envelope line without the text, stored next to the text (for example in a JSON field): exactly one line
+`[hampp1:<hex>]` or `[hampp1u:<b64url>]` as above, nothing before it, trailing whitespace allowed. It is the same header, signature and CRC as in an inline message: signing
+a text yields the same signature for both forms, and `text + "\n" + line` is a valid inline message with the visible carrier. The verifier takes the separately supplied
+text **literally** as `visible_text`: no envelope is extracted from it (an envelope inside the text is just text), only the canonicalisation of section 1 applies. A detached line is
+not zero-width (it would be invisible and useless on its own). A header with the session flag (bit 0) is not valid detached: `unverified:envelope-corrupt`. A line that is not a
+HAMPP line (including the empty string) is `unverified:envelope-missing`. All other steps and verdicts are those of section 4.
+
+**Detached caveats.** The consumer must parse and act on exactly the bytes it verified (not on a re-serialised or differently parsed form). The signature carries no context label: it says that a key
+signed this text, nothing about where the text is used; a consumer that signs structured data should put purpose, audience and a nonce inside the text and use its own key.
+Lite messages have no replay protection (`SECURITY.md`).
+
 ## 4. Verification algorithm (in this order)
 
 1. Extract the envelope: missing -> `unverified:envelope-missing`; corrupt -> `unverified:envelope-corrupt`.

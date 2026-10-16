@@ -26,8 +26,9 @@ pub use header::{
 };
 mod protection;
 pub use message::{
-    message_hash, render, sign_header, sign_text, try_sign_header, try_sign_text, verify_text,
-    verify_text_with, Carrier, SignParams, VerifyOptions,
+    message_hash, render, sign_detached, sign_header, sign_text, try_sign_header, try_sign_text,
+    verify_detached, verify_detached_with, verify_text, verify_text_with, Carrier, SignParams,
+    VerifyOptions,
 };
 pub use protection::{effective_protection, EffectiveProtection, Protection};
 pub use verdict::{

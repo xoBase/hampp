@@ -1,5 +1,6 @@
 use hampp_core::{
-    annotate as core_annotate, key_alg, load_signer, save_p256_software, try_sign_text,
+    annotate as core_annotate, key_alg, load_signer, save_p256_software,
+    sign_detached as core_sign_detached, try_sign_text, verify_detached as core_verify_detached,
     verify_text, Carrier, FileKeyStore, KeyMeta, KeyStore, P256Software, Protection, PublicKey,
     SignParams, Signer, SigningIdentity, SingleKey, ALG_P256_TPM,
 };
@@ -102,6 +103,46 @@ fn sign(
     try_sign_text(signer.as_ref(), text, &params, carrier).map_err(err)
 }
 
+/// Detached signature: returns only the envelope line (`[hampp1u:...]`, or `[hampp1:...]` hex with
+/// `base64url=False`) for `text`, to be stored next to it (for example in a JSON field). Lite only.
+/// `compact` as in `sign`. Check it with `verify_detached_json`.
+#[pyfunction]
+#[pyo3(signature = (text, key_path, protection=None, compact=false, base64url=true))]
+fn sign_detached(
+    text: &str,
+    key_path: &str,
+    protection: Option<&str>,
+    compact: bool,
+    base64url: bool,
+) -> PyResult<String> {
+    let (signer, _) = load(key_path)?;
+    let claimed = match protection {
+        Some(p) => level(p)?,
+        None => signer.level(),
+    };
+    let params = SignParams::lite(now())
+        .with_protection(claimed)
+        .with_compact(compact);
+    core_sign_detached(signer.as_ref(), text, &params, base64url).map_err(err)
+}
+
+/// Verdict of a detached signature against `text` (taken literally) as JSON.
+#[pyfunction]
+#[pyo3(signature = (text, signature, public_key_hex, min_protection=None))]
+fn verify_detached_json(
+    text: &str,
+    signature: &str,
+    public_key_hex: &str,
+    min_protection: Option<&str>,
+) -> PyResult<String> {
+    let min = min_protection.map(level).transpose()?;
+    let v = core_verify_detached(signature, text, &SingleKey(pubkey(public_key_hex)?), now())
+        .with_min_protection(min);
+    let mut j = v.to_json();
+    j["visible"] = serde_json::Value::String(v.visible.clone());
+    Ok(j.to_string())
+}
+
 /// Verdict as JSON. `min_protection` is a receiver policy: weaker messages become
 /// `unverified:protection-too-low`.
 #[pyfunction]
@@ -140,6 +181,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(public_key, m)?)?;
     m.add_function(wrap_pyfunction!(sign, m)?)?;
     m.add_function(wrap_pyfunction!(verify_json, m)?)?;
+    m.add_function(wrap_pyfunction!(sign_detached, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_detached_json, m)?)?;
     m.add_function(wrap_pyfunction!(annotate, m)?)?;
     m.add_function(wrap_pyfunction!(strip, m)?)?;
     Ok(())

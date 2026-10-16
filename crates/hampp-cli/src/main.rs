@@ -10,10 +10,10 @@ mod tpm;
 use clap::ValueEnum;
 use clap::{Args, Parser, Subcommand};
 use hampp_core::{
-    annotate, try_sign_text, verify_text_with, Carrier, FileKeyStore, KeyStore, P256Software,
-    Protection, SignParams, SigningIdentity, VerifyOptions,
+    annotate, sign_detached, try_sign_text, verify_detached_with, verify_text_with, Carrier,
+    FileKeyStore, KeyStore, P256Software, Protection, SignParams, SigningIdentity, VerifyOptions,
 };
-use hampp_envelope::{extract_any, strip_all, Envelope, DEFAULT};
+use hampp_envelope::{extract_any, extract_detached, strip_all, Envelope, DEFAULT};
 use hampp_session::Session;
 use io::{now, read_input, Res};
 use keys::{key_path, load_signer, resolver, KeyArgs};
@@ -70,6 +70,13 @@ struct VerifyArgs {
     session: Option<PathBuf>,
     #[arg(long)]
     json: bool,
+    /// Detached mode: the signature line (`[hampp1u:...]`) given here is checked against FILE or
+    /// stdin, which is taken literally as the signed text. Lite only; not with `--session`.
+    #[arg(long, conflicts_with_all = ["session", "sig_file"])]
+    sig: Option<String>,
+    /// Like `--sig`, with the signature line read from this file.
+    #[arg(long, conflicts_with = "session")]
+    sig_file: Option<PathBuf>,
     /// Require at least this effective protection; lower results become
     /// `unverified:protection-too-low`.
     #[arg(long, value_enum)]
@@ -128,6 +135,11 @@ enum Cmd {
         /// `unverified:envelope-corrupt`). Not for sessions.
         #[arg(long, conflicts_with = "session")]
         compact: bool,
+        /// Print only the signature line, not the text (store it next to the text, e.g. in a
+        /// JSON field; verify with `hampp verify --sig`). Base64url `[hampp1u:...]` unless
+        /// `--visible` asks for hex `[hampp1:...]`. Lite only.
+        #[arg(long, conflicts_with_all = ["session", "visible_b64"])]
+        detach: bool,
     },
     /// Verify a signed message. Exit codes: 0 authenticated, 10 unverified, 20 invalid.
     Verify(VerifyArgs),
@@ -161,6 +173,23 @@ fn save_session(p: &Path, s: &Session) -> Res<()> {
 
 fn verdict_for(a: &VerifyArgs, text: &str) -> Res<hampp_core::Verdict> {
     let min = a.min_protection.map(Protection::from);
+    let sig = match (&a.sig, &a.sig_file) {
+        (Some(s), _) => Some(s.clone()),
+        (None, Some(f)) => Some(io::read_file(f)?),
+        _ => None,
+    };
+    if let Some(sig) = sig {
+        let opts = VerifyOptions {
+            min_protection: min,
+        };
+        return Ok(verify_detached_with(
+            &sig,
+            text,
+            resolver(&a.keys)?.as_ref(),
+            now(),
+            &opts,
+        ));
+    }
     if let Some(sp) = &a.session {
         let mut s = load_session(sp)?;
         // The session state advances for every authentic message; the policy only changes the verdict.
@@ -181,7 +210,12 @@ fn verdict_for(a: &VerifyArgs, text: &str) -> Res<hampp_core::Verdict> {
 
 fn inspect(text: &str) -> ExitCode {
     let ex = extract_any(text);
-    match ex.envelope {
+    // a bare signature line (detached mode) is not "text with an envelope", try it as such
+    let envelope = match ex.envelope {
+        Envelope::Missing => extract_detached(text),
+        other => other,
+    };
+    match envelope {
         Envelope::Missing => {
             println!("Result:       UNVERIFIED (envelope-missing)");
             ExitCode::from(10)
@@ -265,6 +299,7 @@ fn capabilities(json: bool) {
             "protocol_versions": [1],
             "suites": [hampp_core::SUITE_ED25519_SHA256, hampp_core::SUITE_ECDSA_P256_SHA256],
             "carriers": ["zero-width", "visible", "visible-b64"],
+            "features": ["compact-header", "detached"],
             "profiles": ["lite", "full", "verify-only"],
             "protection": protection,
             "key_protection": avail.iter().filter(|(_, r)| r.is_ok()).map(|(p, _)| if *p == Protection::Software { "software" } else { "tpm" }).collect::<Vec<_>>(),
@@ -276,6 +311,7 @@ fn capabilities(json: bool) {
         println!("protocol:       HAMPP/1");
         println!("suites:         1 (Ed25519 + SHA-256), 2 (ECDSA P-256 + SHA-256)");
         println!("carriers:       zero-width, visible, visible-b64");
+        println!("features:       compact-header, detached (lite only)");
         println!("profiles:       lite, full, verify-only");
         for (p, r) in &avail {
             match r {
@@ -381,6 +417,7 @@ fn run(cli: Cli) -> Res<ExitCode> {
             session,
             protection,
             compact,
+            detach,
         } => {
             let text = read_input(&file)?;
             let (signer, _meta) = load_signer(&key_path(&key))?;
@@ -392,6 +429,16 @@ fn run(cli: Cli) -> Res<ExitCode> {
             } else {
                 Carrier::ZeroWidth
             };
+            if detach {
+                let params = SignParams::lite(now())
+                    .with_protection(level)
+                    .with_compact(compact);
+                println!(
+                    "{}",
+                    sign_detached(signer.as_ref(), &text, &params, !visible)?
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
             let out = match session {
                 Some(sp) => {
                     let mut s = load_session(&sp)?;

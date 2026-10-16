@@ -8,4 +8,6 @@ pub use frame::{
     embed, embed_with, extract, extract_with, strip_all, Envelope, EnvelopeError, Extracted,
 };
 mod visible;
-pub use visible::{embed_visible, embed_visible_b64, extract_any, extract_visible, visible_line};
+pub use visible::{
+    embed_visible, embed_visible_b64, extract_any, extract_detached, extract_visible, visible_line,
+};

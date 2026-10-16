@@ -424,3 +424,78 @@ fn compact_message_is_not_a_session_message() {
     let v = verify_text(&msg, &SingleKey(alice().identity.public_key.into()), NOW);
     assert_eq!(v.header.unwrap().session_id, [0; 8]);
 }
+
+#[test]
+fn detached_signature_equals_the_inline_one_and_verifies_against_the_text() {
+    let a = alice();
+    let keys = SingleKey(a.identity.public_key.into());
+    let text = "{\"vote\":\"yes\"}";
+    for compact in [false, true] {
+        for b64 in [false, true] {
+            let p = SignParams::lite(NOW).with_compact(compact);
+            let sig = sign_detached(&a, text, &p, b64).unwrap();
+            assert!(sig.starts_with(if b64 { "[hampp1u:" } else { "[hampp1:" }));
+            assert!(!sig.contains('\n') && !sig.contains(text));
+            let v = verify_detached(&sig, text, &keys, NOW);
+            assert_eq!(v.code(), "authenticated:signed-by-agent", "{sig}");
+            assert_eq!(v.visible, text);
+            // the same header inline (visible carrier) gives the same verdict: one signature, two forms
+            let inline = format!("{text}\n{sig}");
+            assert_eq!(verify_text(&inline, &keys, NOW).code(), v.code());
+            // changed text, missing signature, damaged signature
+            assert_eq!(
+                verify_detached(&sig, "{\"vote\":\"no\"}", &keys, NOW).code(),
+                "invalid:signature-invalid"
+            );
+            assert_eq!(
+                verify_detached("", text, &keys, NOW).code(),
+                "unverified:envelope-missing"
+            );
+            let broken = sig.replacen(&sig[12..13], if &sig[12..13] == "A" { "B" } else { "A" }, 1);
+            assert_eq!(
+                verify_detached(&broken, text, &keys, NOW).code(),
+                "unverified:envelope-corrupt"
+            );
+        }
+    }
+}
+
+#[test]
+fn detached_text_is_literal_and_trailing_whitespace_is_canonicalised() {
+    let a = alice();
+    let keys = SingleKey(a.identity.public_key.into());
+    let sig = sign_detached(&a, "Ja.", &SignParams::lite(NOW), true).unwrap();
+    // trailing whitespace and CRLF are not signed (section 1) ...
+    assert_eq!(
+        verify_detached(&sig, "Ja.\r\n", &keys, NOW).code(),
+        "authenticated:signed-by-agent"
+    );
+    // ... but an envelope inside the supplied text is just text, never extracted
+    let with_env = sign_text(&a, "Ja.", &SignParams::lite(NOW), Carrier::ZeroWidth);
+    assert_eq!(
+        verify_detached(&sig, &with_env, &keys, NOW).code(),
+        "invalid:signature-invalid"
+    );
+}
+
+#[test]
+fn detached_is_lite_only() {
+    let a = alice();
+    let keys = SingleKey(a.identity.public_key.into());
+    let p = SignParams {
+        session_id: [7; 8],
+        seq: 1,
+        ..SignParams::lite(NOW)
+    };
+    assert!(matches!(
+        sign_detached(&a, "x", &p, true),
+        Err(SignError::DetachedNeedsLite)
+    ));
+    // a session header turned into a detached line is not accepted
+    let msg = sign_text(&a, "x", &p, Carrier::Visible);
+    let line = msg.rsplit('\n').next().unwrap();
+    assert_eq!(
+        verify_detached(line, "x", &keys, NOW).code(),
+        "unverified:envelope-corrupt"
+    );
+}

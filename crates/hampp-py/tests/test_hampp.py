@@ -155,3 +155,23 @@ def test_base64url_visible_line(tmp_path):
     assert hampp.verify(msg, pub)["code"] == "authenticated:signed-by-agent"
     assert hampp.strip(msg) == "Ja."
     assert hampp.verify(msg.replace("]", "=]"), pub)["code"] == "unverified:envelope-corrupt"
+
+
+@pytest.mark.parametrize("alg", ["ed25519", "ecdsa-p256"])
+@pytest.mark.parametrize("compact", [False, True])
+def test_detached_signature_roundtrip(tmp_path, alg, compact):
+    key = str(tmp_path / "k.json")
+    pub = hampp.generate_key("a", key, alg)
+    body = '{"vote":"yes"}'
+    sig = hampp.sign_detached(body, key, compact=compact)
+    assert sig.startswith("[hampp1u:") and sig.endswith("]") and body not in sig and "\n" not in sig
+    assert hampp.verify_detached(body, sig, pub)["code"] == "authenticated:signed-by-agent"
+    assert hampp.verify_detached(body + "\n", sig, pub)["code"] == "authenticated:signed-by-agent"
+    assert hampp.verify_detached('{"vote":"no"}', sig, pub)["code"] == "invalid:signature-invalid"
+    assert hampp.verify_detached(body, "", pub)["code"] == "unverified:envelope-missing"
+    assert hampp.verify_detached(body, sig.replace("]", "=]"), pub)["code"] == "unverified:envelope-corrupt"
+    hexsig = hampp.sign_detached(body, key, compact=compact, base64url=False)
+    assert hexsig.startswith("[hampp1:") and hampp.verify_detached(body, hexsig, pub)["status"] == "authenticated"
+    assert len(sig) < len(hexsig)
+    # the inline form of the same text and the detached line are interchangeable for a verifier
+    assert hampp.verify(body + "\n" + hexsig, pub)["code"] == "authenticated:signed-by-agent"

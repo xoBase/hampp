@@ -220,6 +220,20 @@ def verify_protection(text: str, pubkey: bytes, registry=None, minimum=None):
     visible, st, payload = extract(text)
     if st == "missing":
         visible, st, payload = extract_visible(text)
+    return verify_payload(visible, st, payload, pubkey, registry, minimum)
+
+
+def verify_detached(sig: str, text: str, pubkey: bytes, registry=None, minimum=None):
+    """Detached envelope (spec/PROTOCOL.md section 3): `sig` is exactly one bracketed line, `text`
+    is the visible text taken literally (no envelope is extracted from it)."""
+    line = sig.rstrip(WHITE_SPACE)
+    if not (line.startswith("[hampp1:") or line.startswith("[hampp1u:")):
+        return "unverified:envelope-missing", None, []
+    payload = decode_line(line)
+    return verify_payload(text, "corrupt" if payload is None else "ok", payload, pubkey, registry, minimum, lite_only=True)
+
+
+def verify_payload(visible, st, payload, pubkey, registry=None, minimum=None, lite_only=False):
     if st == "missing":
         return "unverified:envelope-missing", None, []
     if st == "corrupt":
@@ -227,7 +241,7 @@ def verify_protection(text: str, pubkey: bytes, registry=None, minimum=None):
     if payload[:2] != b"HP" or payload[2] != 1:
         return "invalid:unsupported-version", None, []
     parsed = parse_header(payload)
-    if parsed is None:
+    if parsed is None or (lite_only and parsed[0] & 1):
         return "unverified:envelope-corrupt", None, []
     flags, suite, key_id, session_id, seq, ts, prev, sig = parsed
     if suite not in (1, 2):
@@ -407,7 +421,21 @@ def check_handshake(path: str) -> int:
     return 1 if failures else 0
 
 
+def check_detached(path: str) -> int:
+    failures = 0
+    for v in json.load(open(path, encoding="utf-8")):
+        pubkey = bytes.fromhex(v["public_key_hex"])
+        got = verify_detached(v["signature"], v["text"], pubkey, minimum=v.get("min_protection"))
+        want = (v["expected"], v["expected_protection"], [])
+        ok = got == want
+        failures += not ok
+        print(("ok   " if ok else "FAIL ") + v["name"] + ("" if ok else f" got={got} expected={want}"))
+    return 1 if failures else 0
+
+
 def main(argv) -> int:
+    if len(argv) >= 2 and argv[0] == "--detached":
+        return check_detached(argv[1])
     if len(argv) >= 2 and argv[0] == "--handshake":
         return check_handshake(argv[1])
     if len(argv) >= 2 and argv[0] == "--handshake-p256":

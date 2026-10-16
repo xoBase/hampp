@@ -848,3 +848,78 @@ fn base64url_visible_line_is_shorter_than_hex_and_verifies() {
         .assert()
         .failure();
 }
+
+#[test]
+fn detached_signature_signs_and_verifies_through_the_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    for alg in ["ed25519", "ecdsa-p256"] {
+        let key = dir
+            .path()
+            .join(format!("d-{alg}.json"))
+            .display()
+            .to_string();
+        hampp()
+            .args(["keygen", "--agent", "d", "--alg", alg, "--key", &key])
+            .assert()
+            .success();
+        let pubkey = String::from_utf8(
+            hampp()
+                .args(["identity", "--key", &key, "--public"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        let text = "{\"vote\":\"yes\"}";
+        let sig = sign(&key, text, &["--detach", "--compact"]);
+        let sig = sig.trim();
+        assert!(sig.starts_with("[hampp1u:") && sig.ends_with(']') && !sig.contains(text));
+        assert!(sig.len() < 130, "compact b64url line: {}", sig.len());
+        let hex = sign(&key, text, &["--detach", "--visible"]);
+        assert!(hex.starts_with("[hampp1:"));
+        // verify against the text; literal --sig, --sig-file and a changed text
+        hampp()
+            .args(["verify", "--pubkey", &pubkey, "--sig", sig])
+            .write_stdin(text)
+            .assert()
+            .code(0);
+        let f = dir.path().join(format!("{alg}.sig"));
+        std::fs::write(&f, format!("{sig}\n")).unwrap();
+        hampp()
+            .args([
+                "verify",
+                "--pubkey",
+                &pubkey,
+                "--sig-file",
+                f.to_str().unwrap(),
+            ])
+            .write_stdin(text)
+            .assert()
+            .code(0);
+        hampp()
+            .args(["verify", "--pubkey", &pubkey, "--sig", sig, "--json"])
+            .write_stdin("{\"vote\":\"no\"}")
+            .assert()
+            .code(20)
+            .stdout(predicates::str::contains("signature-invalid"));
+        hampp()
+            .args(["verify", "--pubkey", &pubkey, "--sig", "kein signature"])
+            .write_stdin(text)
+            .assert()
+            .code(10);
+        hampp()
+            .arg("inspect")
+            .write_stdin(sig.to_string())
+            .assert()
+            .code(0)
+            .stdout(predicates::str::contains("Header:       compact (lite)"));
+        // detached is Lite only
+        hampp()
+            .args(["sign", "--key", &key, "--detach", "--session", "x.json"])
+            .write_stdin(text)
+            .assert()
+            .failure();
+    }
+}

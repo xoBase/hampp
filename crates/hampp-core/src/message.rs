@@ -4,7 +4,9 @@ use crate::{
     effective_protection, payload_hash, verify_signature, Protection, SignError, Signer,
     SigningIdentity, SUITE_ECDSA_P256_SHA256, SUITE_ED25519_SHA256,
 };
-use hampp_envelope::{embed, embed_visible, embed_visible_b64, extract_any, Envelope};
+use hampp_envelope::{
+    embed, embed_visible, embed_visible_b64, extract_any, extract_detached, Envelope,
+};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
@@ -133,8 +135,58 @@ pub fn verify_text_with(
     opts: &VerifyOptions,
 ) -> Verdict {
     let ex = extract_any(text);
-    let visible = ex.visible;
-    let bytes = match ex.envelope {
+    verify_parts(ex.visible, ex.envelope, false, keys, now, opts)
+}
+
+/// Signs `text` without touching it and returns only the envelope line (`[hampp1u:...]`, or
+/// `[hampp1:...]` hex with `base64url = false`) to be stored next to the text. Lite only: the
+/// message must be sessionless. The signature is the one an inline message would carry.
+pub fn sign_detached(
+    s: &dyn Signer,
+    text: &str,
+    p: &SignParams,
+    base64url: bool,
+) -> Result<String, SignError> {
+    if p.session_id != [0; 8] || p.seq != 0 || p.prev_hash != [0; 16] {
+        return Err(SignError::DetachedNeedsLite);
+    }
+    let h = try_sign_header(s, text, p)?;
+    Ok(hampp_envelope::visible_line(&h.encode(), base64url))
+}
+
+/// Verifies a detached envelope line against `text`, which is taken literally (no envelope is
+/// extracted from it; only the canonicalisation of section 1 applies). The verdict is the one the
+/// inline message `text + envelope` would get. A header with the session flag is not valid here.
+pub fn verify_detached(sig: &str, text: &str, keys: &dyn KeyResolver, now: u64) -> Verdict {
+    verify_detached_with(sig, text, keys, now, &VerifyOptions::default())
+}
+
+pub fn verify_detached_with(
+    sig: &str,
+    text: &str,
+    keys: &dyn KeyResolver,
+    now: u64,
+    opts: &VerifyOptions,
+) -> Verdict {
+    verify_parts(
+        text.to_string(),
+        extract_detached(sig),
+        true,
+        keys,
+        now,
+        opts,
+    )
+}
+
+fn verify_parts(
+    visible: String,
+    envelope: Envelope,
+    lite_only: bool,
+    keys: &dyn KeyResolver,
+    now: u64,
+    opts: &VerifyOptions,
+) -> Verdict {
+    let bytes = match envelope {
         Envelope::Missing => {
             return Verdict::bare(Status::Unverified, Reason::EnvelopeMissing, visible)
         }
@@ -150,6 +202,10 @@ pub fn verify_text_with(
         }
         Err(_) => return Verdict::bare(Status::Unverified, Reason::EnvelopeCorrupt, visible),
     };
+    // a detached envelope is Lite: a session header cannot be checked without its session
+    if lite_only && h.flags & crate::FLAG_SESSION != 0 {
+        return Verdict::bare(Status::Unverified, Reason::EnvelopeCorrupt, visible);
+    }
     if h.suite != SUITE_ED25519_SHA256 && h.suite != SUITE_ECDSA_P256_SHA256 {
         let mut v = Verdict::bare(Status::Invalid, Reason::UnsupportedSuite, visible);
         v.header = Some(h);

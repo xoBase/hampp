@@ -1,0 +1,155 @@
+[
+  {
+    "name": "detached-b64-compact",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-b64-long",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABAAEQumgsitE1EwAAAAAAAAAAAMD7gdYGAAAAAAAAAAAAAAAAAAAAAFxeW0R88TvOt9ZGIrzRbTWhvf4kjbbDlSvZWJNPxKC-CmfRIzkSFWBSjMxEKRR2xa1zXnRPn2uCHINFDkBVzAsOuw]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-hex-compact",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1:485001080110ba682c8ad13513c0fb81d6068e1fbb5fb1dc50a13edc31e006874d0aae01b3458a66cec4a83710107ce401d4fcb572d1fc353242ada463ffd11046ccd0032bce49f97e5b9a6dd85753160b022a6d]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-hex-long",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1:485001000110ba682c8ad13513000000000000000000c0fb81d606000000000000000000000000000000005c5e5b447cf13bceb7d64622bcd16d35a1bdfe248db6c3952bd958934fc4a0be0a67d12339121560528ccc44291476c5ad735e744f9f6b821c83450e4055cc0b0ebb]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-p256-b64-compact",
+    "suite": 2,
+    "public_key_hex": "0351a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCAIuoGp7ypAM0sD7gdYGDBdddNprvjMtvAnC-cwh4c_oFAjp7IzEIudw3Ql14KhFSNEzOI6Ge9oyPxQd1rS29SVS4hnzunBwni5WSrK8YlJR]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-p256-bound-claimed",
+    "suite": 2,
+    "public_key_hex": "0351a7580833898ea1b183cbd7350a4099078c6ef1c1e18e970cd7683035f25e7d",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCgIuoGp7ypAM0sD7gdYG7S0KpuYy5YYjNXQGSyuUXsBdPkSTcND4y5QroakKs98P3Wy2I3dy4PII0LPHaihK1aiVQPCgTEA46kv9lQI2cTv8]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "bound"
+  },
+  {
+    "name": "detached-trailing-crlf-in-text",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}\r\n",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "detached-trailing-newline-after-line",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]\n",
+    "expected": "authenticated:signed-by-agent",
+    "expected_protection": "software"
+  },
+  {
+    "name": "neg-detached-changed-text",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"no\"}",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "invalid:signature-invalid",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-text-with-envelope-is-literal",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}⁤​​​​‌‍‍⁠‌​‍​‌‌​​​​​‌​​​​​​​‌​‌​​‍⁠‍‍‌‍‍​​‍⁠​‍​‍‍⁠‌​‌​⁠‌‌​‌​⁠​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​⁠​​​⁠⁠‍⁠‍​​‌⁠‌‌‍​​‌‍​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​‌‌⁠​‌‌⁠‍‌‌‍⁠‌​‌​‌⁠⁠​⁠⁠​‌​⁠‍⁠⁠​⁠‍‍⁠‌⁠⁠‌‌‍‌​‌‍​‍​‍‍⁠⁠​⁠‌​‌‌‍⁠‌​⁠‌‌‍‍​‌‍⁠⁠‌⁠⁠⁠‍​‍‌​‍​⁠‌‍⁠‌‍⁠​​⁠‍‌‌‌​‍‍⁠⁠‌‍‌‌‌‍​‍‌​⁠‌​⁠⁠⁠​‌​‍‍​​‍⁠⁠‍​​‍‍‌‍‌⁠⁠‌​‌​‍​⁠​⁠‍‌​‌​‍​‌‌‌‌‍​​‌‌​‍‍​⁠​⁠​⁠​‌​‌​​‍‍‌​‌‌​‌⁠‌‍⁠​‌‌‍‍⁠‌‌⁠​⁠‌‌⁠‍‌⁠‌​‌​⁠⁠‍‌⁠⁠‌‍‍⁠‍​​‍​‌⁠​‍​​⁠‌​‌‌​​⁠‍‌​​​‌‌‌‌⁠​⁠​​​‍⁠⁠​‌‌‌​​‍⁣",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "invalid:signature-invalid",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-empty-signature",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "",
+    "expected": "unverified:envelope-missing",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-leading-space",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": " [hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "unverified:envelope-missing",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-zero-width-envelope",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "⁤​​​​‌‍‍⁠‌​‍​‌‌​​​​​‌​​​​​​​‌​‌​​‍⁠‍‍‌‍‍​​‍⁠​‍​‍‍⁠‌​‌​⁠‌‌​‌​⁠​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​⁠​​​⁠⁠‍⁠‍​​‌⁠‌‌‍​​‌‍​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​​‌‌⁠​‌‌⁠‍‌‌‍⁠‌​‌​‌⁠⁠​⁠⁠​‌​⁠‍⁠⁠​⁠‍‍⁠‌⁠⁠‌‌‍‌​‌‍​‍​‍‍⁠⁠​⁠‌​‌‌‍⁠‌​⁠‌‌‍‍​‌‍⁠⁠‌⁠⁠⁠‍​‍‌​‍​⁠‌‍⁠‌‍⁠​​⁠‍‌‌‌​‍‍⁠⁠‌‍‌‌‌‍​‍‌​⁠‌​⁠⁠⁠​‌​‍‍​​‍⁠⁠‍​​‍‍‌‍‌⁠⁠‌​‌​‍​⁠​⁠‍‌​‌​‍​‌‌‌‌‍​​‌‌​‍‍​⁠​⁠​⁠​‌​‌​​‍‍‌​‌‌​‌⁠‌‍⁠​‌‌‍‍⁠‌‌⁠​⁠‌‌⁠‍‌⁠‌​‌​⁠⁠‍‌⁠⁠‌‍‍⁠‍​​‍​‌⁠​‍​​⁠‌​‌‌​​⁠‍‌​​​‌‌‌‌⁠​⁠​​​‍⁠⁠​‌‌‌​​‍⁣",
+    "expected": "unverified:envelope-missing",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-padded",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt=]",
+    "expected": "unverified:envelope-corrupt",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-two-lines",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]\n[hampp1u:SFABCAEQumgsitE1E8D7gdYGjh-7X7HcUKE-3DHgBodNCq4Bs0WKZs7EqDcQEHzkAdT8tXLR_DUyQq2kY__REEbM0AMrzkn5fluabdhXUxYLAipt]",
+    "expected": "unverified:envelope-corrupt",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-upper-case-hex",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1:485001080110BA682C8AD13513C0FB81D6068E1FBB5FB1DC50A13EDC31E006874D0AAE01B3458A66CEC4A83710107CE401D4FCB572D1FC353242ADA463FFD11046CCD0032BCE49F97E5B9A6DD85753160B022A6D]",
+    "expected": "unverified:envelope-corrupt",
+    "expected_protection": null
+  },
+  {
+    "name": "neg-detached-session-header",
+    "suite": 1,
+    "public_key_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "text": "{\"question\":\"q-1\",\"vote\":\"yes\"}",
+    "signature": "[hampp1:485001010110ba682c8ad13513070707070707070701c0fb81d606000000000000000000000000000000004ceae1c100e83001093266c16f9a87d6c6841edebbf72ff502a554ecfd756d9d759ce19dd08f1aad3689feb85aa9828d238aa575167541fc9839d6ee1a17db069e07]",
+    "expected": "unverified:envelope-corrupt",
+    "expected_protection": null
+  }
+]
