@@ -74,12 +74,9 @@ fn b64url_decode(s: &str) -> Option<Vec<u8>> {
 /// Decodes one bracketed line (`[hampp1:..]` or `[hampp1u:..]`, nothing before or after).
 /// `None`: the line does not start with a HAMPP tag at all.
 pub(crate) fn parse_line(line: &str) -> Option<Result<Vec<u8>, EnvelopeError>> {
-    let (tag_is_b64, rest) = if let Some(r) = line.strip_prefix(B64_TAG) {
-        (true, r)
-    } else if let Some(r) = line.strip_prefix(HEX_TAG) {
-        (false, r)
-    } else {
-        return None;
+    let (tag_is_b64, rest) = match line.strip_prefix(B64_TAG) {
+        Some(r) => (true, r),
+        None => (false, line.strip_prefix(HEX_TAG)?),
     };
     let Some(body) = rest.strip_suffix(']') else {
         return Some(Err(EnvelopeError::Malformed));
