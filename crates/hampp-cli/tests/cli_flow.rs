@@ -781,3 +781,47 @@ fn tpm_key_file_without_tpm_support_gives_a_clear_error() {
         .stdout("")
         .stderr(predicates::str::contains("without tpm support"));
 }
+
+#[test]
+fn compact_header_is_shorter_verifies_and_is_opt_in() {
+    let dir = tempfile::tempdir().unwrap();
+    for alg in ["ed25519", "ecdsa-p256"] {
+        let key = dir.path().join(format!("{alg}.json")).display().to_string();
+        hampp()
+            .args(["keygen", "--agent", "c", "--alg", alg, "--key", &key])
+            .assert()
+            .success();
+        let pubkey = String::from_utf8(
+            hampp()
+                .args(["identity", "--key", &key, "--public"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        for carrier in [&[][..], &["--visible"][..]] {
+            let long = sign(&key, "Hallo", carrier);
+            let mut args = vec!["--compact"];
+            args.extend(carrier);
+            let compact = sign(&key, "Hallo", &args);
+            assert!(compact.len() < long.len(), "{alg}: compact must be shorter");
+            hampp()
+                .args(["verify", "--pubkey", &pubkey])
+                .write_stdin(compact.clone())
+                .assert()
+                .code(0);
+            hampp()
+                .arg("inspect")
+                .write_stdin(compact)
+                .assert()
+                .stdout(predicates::str::contains("compact (lite)"));
+            hampp()
+                .arg("inspect")
+                .write_stdin(long)
+                .assert()
+                .stdout(predicates::str::contains("Header:       full"));
+        }
+    }
+}

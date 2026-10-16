@@ -1,4 +1,4 @@
-use crate::header::{flags_for, Header, HeaderError};
+use crate::header::{flags_for, Header, HeaderError, FLAG_COMPACT};
 use crate::verdict::{KeyResolver, Level, Reason, Status, TrustState, Verdict};
 use crate::{
     effective_protection, payload_hash, verify_signature, Protection, SignError, Signer,
@@ -15,11 +15,19 @@ pub struct SignParams {
     pub prev_hash: [u8; 16],
     /// Protection level to claim in the header; must not exceed the signer's level.
     pub protection: Protection,
+    /// Use the compact Lite header (needs the zero session fields of `lite`). Opt-in: a verifier
+    /// older than 0.5 reports such a message as `unverified:envelope-corrupt`.
+    pub compact: bool,
 }
 
 impl SignParams {
     pub fn with_protection(mut self, protection: Protection) -> Self {
         self.protection = protection;
+        self
+    }
+
+    pub fn with_compact(mut self, compact: bool) -> Self {
+        self.compact = compact;
         self
     }
 
@@ -31,6 +39,7 @@ impl SignParams {
             timestamp,
             prev_hash: [0; 16],
             protection: Protection::Software,
+            compact: false,
         }
     }
 }
@@ -51,7 +60,8 @@ pub fn try_sign_header(s: &dyn Signer, visible: &str, p: &SignParams) -> Result<
         });
     }
     let mut h = Header {
-        flags: flags_for(p.session_id != [0; 8], p.protection),
+        flags: flags_for(p.session_id != [0; 8], p.protection)
+            | if p.compact { FLAG_COMPACT } else { 0 },
         suite: s.suite(),
         key_id: s.public_key().key_id(),
         session_id: p.session_id,
@@ -60,6 +70,9 @@ pub fn try_sign_header(s: &dyn Signer, visible: &str, p: &SignParams) -> Result<
         prev_hash: p.prev_hash,
         signature: [0; 64],
     };
+    if p.compact && !h.compact_applicable() {
+        return Err(SignError::CompactNotApplicable);
+    }
     h.signature = s.sign(&h.signing_input(&payload_hash(visible)))?;
     Ok(h)
 }

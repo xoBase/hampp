@@ -133,3 +133,14 @@ def test_tpm_key_file_gets_a_clear_message(tmp_path):
         with pytest.raises(ValueError, match="TPM key.*command line tool") as e:
             call()
         assert "invalid key file" not in str(e.value)
+
+
+@pytest.mark.parametrize("alg", ["ed25519", "ecdsa-p256"])
+def test_compact_header_is_shorter_and_verifies(tmp_path, alg):
+    key = str(tmp_path / "k.json")
+    pub = hampp.generate_key("a", key, alg)
+    for visible in (False, True):
+        long = hampp.sign("Hallo", key, visible=visible)
+        compact = hampp.sign("Hallo", key, visible=visible, compact=True)
+        assert len(compact) < len(long)
+        assert hampp.verify(compact, pub)["code"] == "authenticated:signed-by-agent"

@@ -55,6 +55,7 @@ fn build() -> Vec<Vector> {
         &hex_body,
         &format!("{} {}", &hex_body[..20], &hex_body[20..]),
     );
+    let pc = SignParams::lite(TS).with_compact(true);
     vec![
         mk("lite-ok", ok, good.clone(), "authenticated:signed-by-agent"),
         mk(
@@ -73,6 +74,18 @@ fn build() -> Vec<Vector> {
             "lite-visible-carrier",
             ok,
             sign_text(&id, ok, &p, Carrier::Visible),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-compact-zero-width",
+            ok,
+            sign_text(&id, ok, &pc, Carrier::ZeroWidth),
+            "authenticated:signed-by-agent",
+        ),
+        mk(
+            "lite-compact-visible",
+            ok,
+            sign_text(&id, ok, &pc, Carrier::Visible),
             "authenticated:signed-by-agent",
         ),
         mk(

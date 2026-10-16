@@ -120,6 +120,10 @@ enum Cmd {
         /// Protection level to claim (default: the highest this key offers).
         #[arg(long, value_enum)]
         protection: Option<ProtectionArg>,
+        /// Compact Lite header (25 bytes shorter; verifiers older than 0.5 report
+        /// `unverified:envelope-corrupt`). Not for sessions.
+        #[arg(long, conflicts_with = "session")]
+        compact: bool,
     },
     /// Verify a signed message. Exit codes: 0 authenticated, 10 unverified, 20 invalid.
     Verify(VerifyArgs),
@@ -191,6 +195,14 @@ fn inspect(text: &str) -> ExitCode {
                 } else {
                     hex::encode(h.session_id)
                 };
+                println!(
+                    "Header:       {}",
+                    if h.is_compact() {
+                        "compact (lite)"
+                    } else {
+                        "full"
+                    }
+                );
                 println!("Session:      {session}");
                 println!("Sequence:     {}", h.seq);
                 println!(
@@ -363,6 +375,7 @@ fn run(cli: Cli) -> Res<ExitCode> {
             visible,
             session,
             protection,
+            compact,
         } => {
             let text = read_input(&file)?;
             let (signer, _meta) = load_signer(&key_path(&key))?;
@@ -383,7 +396,9 @@ fn run(cli: Cli) -> Res<ExitCode> {
                 None => try_sign_text(
                     signer.as_ref(),
                     &text,
-                    &SignParams::lite(now()).with_protection(level),
+                    &SignParams::lite(now())
+                        .with_protection(level)
+                        .with_compact(compact),
                     carrier,
                 )?,
             };

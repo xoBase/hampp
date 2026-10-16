@@ -62,6 +62,7 @@ impl Session {
             timestamp: now,
             prev_hash: self.out_prev,
             protection,
+            compact: false,
         };
         let h = try_sign_header(signer, text, &p)?;
         self.out_seq += 1;

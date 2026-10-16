@@ -5,7 +5,8 @@ use proptest::prelude::*;
 fn header() -> impl Strategy<Value = Header> {
     (
         any::<bool>(),
-        0u8..=2, // defined protection levels
+        any::<bool>(), // compact Lite header (only for sessionless messages)
+        0u8..=2,       // defined protection levels
         any::<u8>(),
         any::<[u8; 8]>(),
         any::<[u8; 8]>(),
@@ -15,15 +16,34 @@ fn header() -> impl Strategy<Value = Header> {
         proptest::collection::vec(any::<u8>(), 64),
     )
         .prop_map(
-            |(session, level, suite, key_id, session_id, seq, timestamp, prev_hash, sig)| Header {
-                flags: flags_for(session, Protection::from_bits(level).unwrap()),
+            |(
+                session,
+                compact,
+                level,
                 suite,
                 key_id,
                 session_id,
                 seq,
                 timestamp,
                 prev_hash,
-                signature: sig.try_into().unwrap(),
+                sig,
+            )| {
+                let compact = compact && !session;
+                let mut flags = flags_for(session, Protection::from_bits(level).unwrap());
+                if compact {
+                    flags |= FLAG_COMPACT;
+                }
+                Header {
+                    flags,
+                    suite,
+                    key_id,
+                    // the compact form implies zero session fields
+                    session_id: if compact { [0; 8] } else { session_id },
+                    seq: if compact { 0 } else { seq },
+                    timestamp,
+                    prev_hash: if compact { [0; 16] } else { prev_hash },
+                    signature: sig.try_into().unwrap(),
+                }
             },
         )
 }
@@ -70,7 +90,7 @@ proptest! {
 
     #[test]
     fn undefined_flag_bits_are_rejected(h in header(), bad in 1u8..=255) {
-        let defined = FLAG_SESSION | FLAG_PROTECTION_MASK;
+        let defined = FLAG_SESSION | FLAG_PROTECTION_MASK | FLAG_COMPACT;
         let flags = (h.flags & defined) | (bad & !defined);
         prop_assume!(flags & !defined != 0);
         let mut bytes = h.encode();

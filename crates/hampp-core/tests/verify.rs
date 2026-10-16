@@ -378,3 +378,49 @@ fn verdict_json_reports_protection() {
     assert_eq!(j["protection"], "bound");
     assert_eq!(j["protection_claimed"], true);
 }
+
+#[test]
+fn compact_message_verifies_and_the_compact_bit_cannot_be_dropped() {
+    let a = alice();
+    let keys = SingleKey(a.identity.public_key.into());
+    let p = SignParams::lite(NOW).with_compact(true);
+    for carrier in [Carrier::ZeroWidth, Carrier::Visible] {
+        let msg = sign_text(&a, "Ja.", &p, carrier);
+        let v = verify_text(&msg, &keys, NOW);
+        assert_eq!(v.code(), "authenticated:signed-by-agent");
+        assert!(v.header.as_ref().unwrap().is_compact());
+        // re-spell the same fields as a long header: the signature covered the compact flag
+        let mut h = v.header.unwrap();
+        h.flags &= !FLAG_COMPACT;
+        let respelled = render("Ja.", &h, carrier);
+        assert_eq!(
+            verify_text(&respelled, &keys, NOW).code(),
+            "invalid:signature-invalid"
+        );
+    }
+}
+
+#[test]
+fn compact_header_needs_a_sessionless_message() {
+    let p = SignParams {
+        session_id: [7; 8],
+        seq: 1,
+        ..SignParams::lite(NOW)
+    }
+    .with_compact(true);
+    let err = try_sign_text(&alice(), "x", &p, Carrier::ZeroWidth).unwrap_err();
+    assert!(matches!(err, SignError::CompactNotApplicable));
+}
+
+#[test]
+fn compact_message_is_not_a_session_message() {
+    // a compact (sessionless) message has session_id 0, so a session rejects it as wrong-session
+    let msg = sign_text(
+        &alice(),
+        "x",
+        &SignParams::lite(NOW).with_compact(true),
+        Carrier::ZeroWidth,
+    );
+    let v = verify_text(&msg, &SingleKey(alice().identity.public_key.into()), NOW);
+    assert_eq!(v.header.unwrap().session_id, [0; 8]);
+}

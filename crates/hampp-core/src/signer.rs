@@ -12,6 +12,8 @@ pub enum SignError {
     },
     #[error("this signer uses suite {signer} but the session uses suite {session}")]
     SuiteMismatch { signer: u8, session: u8 },
+    #[error("the compact header is only for sessionless messages (no session, seq 0, zero chain)")]
+    CompactNotApplicable,
     #[error("signing backend: {0}")]
     Backend(String),
 }

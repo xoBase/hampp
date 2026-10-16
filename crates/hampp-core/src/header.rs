@@ -2,6 +2,9 @@ use crate::Protection;
 pub const MAGIC: [u8; 2] = *b"HP";
 pub const VERSION: u8 = 1;
 pub const FLAG_SESSION: u8 = 0x01;
+/// Compact Lite header: `session_id`, `seq` and `prev_hash` (all zero) are not on the wire.
+/// The bit is part of the signed flags byte, so a message has exactly one spelling.
+pub const FLAG_COMPACT: u8 = 0x08;
 pub const FLAG_PROTECTION_SHIFT: u8 = 1;
 pub const FLAG_PROTECTION_MASK: u8 = 0b0000_0110;
 
@@ -97,17 +100,36 @@ impl Header {
         protection_of(self.flags).unwrap_or(Protection::Software)
     }
 
+    /// Compact form: sessionless fields are implied zeros (see [`FLAG_COMPACT`]).
+    pub fn is_compact(&self) -> bool {
+        self.flags & FLAG_COMPACT != 0
+    }
+
+    /// A header may carry [`FLAG_COMPACT`] only if the omitted fields are really zero and it is
+    /// not a session message; otherwise the wire form would not match what was signed.
+    pub fn compact_applicable(&self) -> bool {
+        self.flags & FLAG_SESSION == 0
+            && self.session_id == [0; 8]
+            && self.seq == 0
+            && self.prev_hash == [0; 16]
+    }
+
     pub fn encode(&self) -> Vec<u8> {
+        debug_assert!(!self.is_compact() || self.compact_applicable());
         let mut v = Vec::with_capacity(112);
         v.extend(MAGIC);
         v.push(VERSION);
         v.push(self.flags);
         v.push(self.suite);
         v.extend(self.key_id);
-        v.extend(self.session_id);
-        put_varint(&mut v, self.seq);
+        if !self.is_compact() {
+            v.extend(self.session_id);
+            put_varint(&mut v, self.seq);
+        }
         put_varint(&mut v, self.timestamp);
-        v.extend(self.prev_hash);
+        if !self.is_compact() {
+            v.extend(self.prev_hash);
+        }
         v.extend(self.signature);
         v
     }
@@ -122,18 +144,30 @@ impl Header {
             return Err(HeaderError::UnsupportedVersion(version));
         }
         let flags = c.take(1)?[0];
-        if flags & !(FLAG_SESSION | FLAG_PROTECTION_MASK) != 0 || protection_of(flags).is_none() {
+        let known = FLAG_SESSION | FLAG_PROTECTION_MASK | FLAG_COMPACT;
+        // compact is only for sessionless messages: a session needs its id, seq and chain
+        let both = FLAG_SESSION | FLAG_COMPACT;
+        if flags & !known != 0 || protection_of(flags).is_none() || flags & both == both {
             return Err(HeaderError::UnsupportedFlags);
         }
+        let compact = flags & FLAG_COMPACT != 0;
         let suite = c.take(1)?[0];
+        let key_id = c.arr()?;
+        let (session_id, seq) = if compact {
+            ([0; 8], 0)
+        } else {
+            (c.arr()?, c.varint()?)
+        };
+        let timestamp = c.varint()?;
+        let prev_hash = if compact { [0; 16] } else { c.arr()? };
         let h = Header {
             flags,
             suite,
-            key_id: c.arr()?,
-            session_id: c.arr()?,
-            seq: c.varint()?,
-            timestamp: c.varint()?,
-            prev_hash: c.arr()?,
+            key_id,
+            session_id,
+            seq,
+            timestamp,
+            prev_hash,
             signature: c.arr()?,
         };
         if c.i != bytes.len() {
@@ -231,7 +265,7 @@ mod tests {
         let mut bytes = sample().encode();
         bytes[3] = 0b0000_0110; // protection = 3
         assert_eq!(Header::decode(&bytes), Err(HeaderError::UnsupportedFlags));
-        for bit in 3..8 {
+        for bit in 4..8 {
             let mut b = sample().encode();
             b[3] = 1 << bit;
             assert_eq!(
@@ -241,6 +275,61 @@ mod tests {
             );
         }
     }
+    fn compact_sample() -> Header {
+        Header {
+            flags: flags_for(false, Protection::Software) | FLAG_COMPACT,
+            suite: 1,
+            key_id: [1; 8],
+            session_id: [0; 8],
+            seq: 0,
+            timestamp: 1_791_000_000,
+            prev_hash: [0; 16],
+            signature: [4; 64],
+        }
+    }
+
+    #[test]
+    fn compact_header_roundtrips_and_is_25_bytes_shorter() {
+        let c = compact_sample();
+        let mut long = c.clone();
+        long.flags &= !FLAG_COMPACT;
+        assert_eq!(c.encode().len(), 82);
+        assert_eq!(long.encode().len(), 107);
+        assert_eq!(Header::decode(&c.encode()).unwrap(), c);
+    }
+
+    #[test]
+    fn compact_bit_is_signed() {
+        let ph = [9u8; 32];
+        let c = compact_sample();
+        let mut long = c.clone();
+        long.flags &= !FLAG_COMPACT;
+        assert_ne!(c.signing_input(&ph), long.signing_input(&ph));
+        // everything else in the signing input is identical (same layout, same zero fields)
+        assert_eq!(c.signing_input(&ph).len(), long.signing_input(&ph).len());
+    }
+
+    #[test]
+    fn compact_rejects_session_bit_truncation_and_trailing_bytes() {
+        let good = compact_sample().encode();
+        let mut bad = good.clone();
+        bad[3] |= FLAG_SESSION;
+        assert_eq!(Header::decode(&bad), Err(HeaderError::UnsupportedFlags));
+        assert_eq!(
+            Header::decode(&good[..good.len() - 1]),
+            Err(HeaderError::Truncated)
+        );
+        let mut bad = good.clone();
+        bad.push(0);
+        assert_eq!(Header::decode(&bad), Err(HeaderError::TrailingBytes));
+        // a long-form body under the compact flag is trailing garbage, not a second spelling
+        let mut long = compact_sample();
+        long.flags &= !FLAG_COMPACT;
+        let mut bad = long.encode();
+        bad[3] |= FLAG_COMPACT;
+        assert!(Header::decode(&bad).is_err());
+    }
+
     #[test]
     fn non_canonical_varint_is_rejected() {
         let mut h = sample();

@@ -118,8 +118,8 @@ fn build() -> Vec<Vector> {
     raw[3] = 0b0000_0110;
     let reserved3 = hampp_envelope::embed(&vis, &raw).unwrap();
     let mut raw = h.encode();
-    raw[3] = 0b0000_1000;
-    let bit3 = hampp_envelope::embed(&vis, &raw).unwrap();
+    raw[3] = 0b0001_0000;
+    let bit4 = hampp_envelope::embed(&vis, &raw).unwrap();
     // valid signature with a high s
     let (vis, mut h) = header_of(&m_sw);
     h.signature = flip_s(&h.signature);
@@ -128,6 +128,28 @@ fn build() -> Vec<Vector> {
     let (vis, mut h) = header_of(&m_sw);
     h.suite = 3;
     let suite3 = render(&vis, &h, Carrier::ZeroWidth);
+
+    // compact Lite header (flag bit 3): sessionless fields are not on the wire
+    let csign = |s: &dyn Signer, p: Protection, c: Carrier| {
+        try_sign_text(s, TEXT, &params(p).with_compact(true), c).unwrap()
+    };
+    let c_ed = csign(&ed(), Software, Carrier::ZeroWidth);
+    let c_sw = csign(&sw, Software, Carrier::ZeroWidth);
+    let c_bound = csign(&bound, Bound, Carrier::Visible);
+    // a compact message re-spelled as a long header: the compact bit is signed, so it breaks
+    let (vis, mut h) = header_of(&c_sw);
+    h.flags &= !FLAG_COMPACT;
+    let c_expanded = render(&vis, &h, Carrier::ZeroWidth);
+    // compact together with the session bit: a decode failure before any signature check
+    let (vis, h) = header_of(&c_sw);
+    let mut raw = h.encode();
+    raw[3] |= FLAG_SESSION;
+    let c_session = hampp_envelope::embed(&vis, &raw).unwrap();
+    // compact header with one extra byte
+    let (vis, h) = header_of(&c_sw);
+    let mut raw = h.encode();
+    raw.push(0);
+    let c_trailing = hampp_envelope::embed(&vis, &raw).unwrap();
 
     // the same P-256 point in spellings that are not valid keys: SEC1 tag 0x05 ("compact"), the
     // uncompressed form, and an x coordinate that is not on the curve
@@ -147,6 +169,66 @@ fn build() -> Vec<Vector> {
     off_curve.push(1);
 
     vec![
+        mk(
+            "compact-suite1",
+            &edk,
+            c_ed,
+            None,
+            None,
+            ok,
+            Some(Software),
+            &[],
+        ),
+        mk(
+            "compact-suite2",
+            &swk,
+            c_sw,
+            None,
+            None,
+            ok,
+            Some(Software),
+            &[],
+        ),
+        mk(
+            "compact-bound-visible",
+            &swk,
+            c_bound,
+            None,
+            None,
+            ok,
+            Some(Bound),
+            &[],
+        ),
+        mk(
+            "neg-compact-respelled-long",
+            &swk,
+            c_expanded,
+            None,
+            None,
+            "invalid:signature-invalid",
+            None,
+            &[],
+        ),
+        mk(
+            "neg-compact-with-session-bit",
+            &swk,
+            c_session,
+            None,
+            None,
+            "unverified:envelope-corrupt",
+            None,
+            &[],
+        ),
+        mk(
+            "neg-compact-trailing-byte",
+            &swk,
+            c_trailing,
+            None,
+            None,
+            "unverified:envelope-corrupt",
+            None,
+            &[],
+        ),
         mk("p0-suite1", &edk, m_ed, None, None, ok, Some(Software), &[]),
         mk(
             "p0-suite2",
@@ -249,9 +331,9 @@ fn build() -> Vec<Vector> {
             &[],
         ),
         mk(
-            "neg-reserved-flag-bit-3",
+            "neg-reserved-flag-bit-4",
             &swk,
-            bit3,
+            bit4,
             None,
             None,
             "unverified:envelope-corrupt",

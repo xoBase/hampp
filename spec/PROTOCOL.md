@@ -19,8 +19,8 @@ magic "HP" (2) | version (1) = 1 | flags (1) | suite (1) | key_id (8) | session_
 seq (varint) | timestamp (varint) | prev_hash (16) | signature (64)
 ```
 
-- `flags`: bit 0 = session message; bits 1-2 = `protection` (0 software, 1 bound, 2 attested; 3 is reserved); bits 3-7 MUST be 0.
-  A reserved protection value or a set bit 3-7 is a decode failure (section 4, step 2).
+- `flags`: bit 0 = session message; bits 1-2 = `protection` (0 software, 1 bound, 2 attested; 3 is reserved); bit 3 = compact Lite header (below); bits 4-7 MUST be 0.
+  A reserved protection value, a set bit 4-7, or bit 3 together with bit 0 is a decode failure (section 4, step 2).
 - `suite`: 1 = Ed25519 + SHA-256; 2 = ECDSA P-256 + SHA-256. Other values: `unsupported-suite`.
 - `key_id`: suite 1 = first 8 bytes of SHA-256(public key, 32 bytes); suite 2 = first 8 bytes of SHA-256(SEC1 compressed point, 33 bytes).
   The input lengths differ, so a key id never collides across suites. `session_id` is 8 zero bytes for sessionless (Lite) messages.
@@ -31,6 +31,19 @@ seq (varint) | timestamp (varint) | prev_hash (16) | signature (64)
 - `varint`: unsigned LEB128, at most 10 bytes, canonical form only (no redundant trailing zero group).
 - `timestamp`: unix seconds. `seq`: 0 for Lite, starting at 1 within a session.
 - No trailing bytes are allowed after `signature`.
+
+**Compact Lite header (flag bit 3).** For sessionless messages `session_id`, `seq` and `prev_hash` are all zero, so with bit 3 set they are
+not transmitted:
+
+```
+magic "HP" (2) | version (1) = 1 | flags (1) | suite (1) | key_id (8) | timestamp (varint) | signature (64)
+```
+
+This is 82 bytes for a current timestamp instead of 107. The verifier reconstructs `session_id` = 8 zero bytes, `seq` = 0 and `prev_hash` = 16 zero bytes;
+the signing input below is unchanged in layout and fields. The `flags` byte in the signing input is the transmitted one, so it includes bit 3: a message has
+exactly one spelling, and a compact header cannot be re-spelled as a long one (or the reverse) without invalidating the signature. A signer sets bit 3 only
+when the message is sessionless with `seq` 0 and a zero `prev_hash`; the long form of a Lite message stays valid and is the default of the tools. Bit 3 together
+with bit 0 (session) is a decode failure, as are truncation and trailing bytes. The chain of section 6 does not depend on the header bytes.
 
 Signing input (Ed25519 strict verification, or ECDSA P-256 over SHA-256 of this input):
 
@@ -143,3 +156,5 @@ After step 7 of section 4 the receiver computes the **effective protection**:
 Compatibility: a message with protection >= 1 is a decode failure for a version-1 verifier that predates this section
 (`unverified:envelope-corrupt`); every suite 2 message is `invalid:unsupported-suite` for such a verifier. Neither is ever `authenticated`.
 Messages with protection 0 and suite 1 are unchanged.
+
+A compact Lite header (bit 3, version 0.5) is likewise a decode failure for an older version-1 verifier (`unverified:envelope-corrupt`), never `authenticated`.

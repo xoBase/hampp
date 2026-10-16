@@ -72,9 +72,16 @@ fn public_key(path: &str) -> PyResult<String> {
 
 /// Signs `text` in the Lite profile (one message, no session). `protection` is the level to
 /// claim; by default the highest this key offers. Claiming more than the key offers is an error.
+/// `compact=True` uses the 25 bytes shorter Lite header (verifiers older than 0.5 cannot read it).
 #[pyfunction]
-#[pyo3(signature = (text, key_path, visible=false, protection=None))]
-fn sign(text: &str, key_path: &str, visible: bool, protection: Option<&str>) -> PyResult<String> {
+#[pyo3(signature = (text, key_path, visible=false, protection=None, compact=false))]
+fn sign(
+    text: &str,
+    key_path: &str,
+    visible: bool,
+    protection: Option<&str>,
+    compact: bool,
+) -> PyResult<String> {
     let (signer, _) = load(key_path)?;
     let carrier = if visible {
         Carrier::Visible
@@ -85,7 +92,9 @@ fn sign(text: &str, key_path: &str, visible: bool, protection: Option<&str>) -> 
         Some(p) => level(p)?,
         None => signer.level(),
     };
-    let params = SignParams::lite(now()).with_protection(claimed);
+    let params = SignParams::lite(now())
+        .with_protection(claimed)
+        .with_compact(compact);
     try_sign_text(signer.as_ref(), text, &params, carrier).map_err(err)
 }
 

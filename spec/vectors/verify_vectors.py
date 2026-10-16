@@ -78,24 +78,35 @@ def varint(buf, i):
 
 def parse_header(payload: bytes):
     """spec/PROTOCOL.md section 2. Returns the fields, or None for any decode failure
-    (reserved flag bits, reserved protection value, truncation, bad varint, trailing bytes)."""
-    if len(payload) < 21:
+    (reserved flag bits, reserved protection value, compact with session bit, truncation,
+    bad varint, trailing bytes). The compact form (flag bit 3) implies zero session fields."""
+    if len(payload) < 13:
         return None
     flags, suite = payload[3], payload[4]
-    if flags & ~0b111 or (flags >> 1) & 3 == 3:
+    compact = bool(flags & 0x08)
+    if flags & ~0b1111 or (flags >> 1) & 3 == 3 or (compact and flags & 1):
         return None
-    key_id, session_id = payload[5:13], payload[13:21]
-    a = varint(payload, 21)
-    if a is None:
-        return None
-    seq, i = a
+    key_id, i = payload[5:13], 13
+    if compact:
+        session_id, seq, prev_zero = bytes(8), 0, bytes(16)
+    else:
+        if len(payload) < 21:
+            return None
+        session_id = payload[13:21]
+        a = varint(payload, 21)
+        if a is None:
+            return None
+        seq, i = a
     b = varint(payload, i)
     if b is None:
         return None
     ts, i = b
-    if len(payload) != i + 80:
+    prev = payload[i:i + 16] if not compact else prev_zero
+    if not compact:
+        i += 16
+    if len(payload) != i + 64:
         return None
-    return flags, suite, key_id, session_id, seq, ts, payload[i:i + 16], payload[i + 16:i + 80]
+    return flags, suite, key_id, session_id, seq, ts, prev, payload[i:i + 64]
 
 
 WHITE_SPACE = "\u0009\u000a\u000b\u000c\u000d\u0020\u0085\u00a0\u1680" + "".join(chr(c) for c in range(0x2000, 0x200B)) + "\u2028\u2029\u202f\u205f\u3000"

@@ -21,8 +21,8 @@ mod message;
 mod verdict;
 
 pub use header::{
-    flags_for, Header, HeaderError, FLAG_PROTECTION_MASK, FLAG_PROTECTION_SHIFT, FLAG_SESSION,
-    MAGIC, VERSION,
+    flags_for, Header, HeaderError, FLAG_COMPACT, FLAG_PROTECTION_MASK, FLAG_PROTECTION_SHIFT,
+    FLAG_SESSION, MAGIC, VERSION,
 };
 mod protection;
 pub use message::{
