@@ -145,6 +145,37 @@ fn bound_key_signs_at_protection_bound_and_the_receiver_can_require_it() {
         .assert()
         .code(10)
         .stdout(predicates::str::contains("protection-too-low"));
+    // compact header and a detached signature with the bound key (CLI, swtpm)
+    let compact = hampp(&tpm.tcti)
+        .args(["sign", "--key", &key, "--compact", "--visible-b64"])
+        .write_stdin("Kompakt")
+        .output()
+        .unwrap();
+    hampp(&tpm.tcti)
+        .args(["verify", "--pubkey", &public, "--min-protection", "bound"])
+        .write_stdin(compact.stdout)
+        .assert()
+        .code(0);
+    let det = hampp(&tpm.tcti)
+        .args(["sign", "--key", &key, "--compact", "--detach"])
+        .write_stdin("{\"v\":1}")
+        .output()
+        .unwrap();
+    let sig = String::from_utf8(det.stdout).unwrap();
+    hampp(&tpm.tcti)
+        .args([
+            "verify",
+            "--pubkey",
+            &public,
+            "--min-protection",
+            "bound",
+            "--sig",
+            sig.trim(),
+        ])
+        .write_stdin("{\"v\":1}")
+        .assert()
+        .code(0)
+        .stdout(predicates::str::contains("HARDWARE_BOUND"));
     // the agent may choose less than the key offers
     let low = hampp(&tpm.tcti)
         .args(["sign", "--key", &key, "--protection", "software"])

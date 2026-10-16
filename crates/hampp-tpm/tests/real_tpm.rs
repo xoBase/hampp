@@ -38,6 +38,24 @@ fn real_tpm_creates_signs_and_leaves_no_handles_behind() {
         assert_eq!(v.code(), "authenticated:signed-by-agent", "message {i}");
         assert_eq!(v.header.unwrap().protection(), Protection::Bound);
     }
+    // compact Lite header and detached signatures with a bound key (0.5)
+    let keys = SingleKey(signer.public_key());
+    let compact = params.clone().with_compact(true);
+    let m = try_sign_text(&signer, "kompakt", &compact, Carrier::VisibleB64).unwrap();
+    let v = verify_text(&m, &keys, 1_791_000_000);
+    assert_eq!(v.code(), "authenticated:signed-by-agent");
+    assert!(v.header.as_ref().unwrap().is_compact());
+    assert_eq!(v.protection.unwrap().level, Protection::Bound);
+    for b64 in [true, false] {
+        let sig = sign_detached(&signer, "{\"vote\":\"yes\"}", &compact, b64).unwrap();
+        let v = verify_detached(&sig, "{\"vote\":\"yes\"}", &keys, 1_791_000_000);
+        assert_eq!(v.code(), "authenticated:signed-by-agent", "{sig}");
+        assert_eq!(v.protection.unwrap().level, Protection::Bound);
+        assert_eq!(
+            verify_detached(&sig, "{\"vote\":\"no\"}", &keys, 1_791_000_000).code(),
+            "invalid:signature-invalid"
+        );
+    }
     // the key file loads again on the same TPM
     let again = TpmSigner::load(&file, None).unwrap();
     again.check_loadable().unwrap();
