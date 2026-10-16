@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -510,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ed25519-dalek",
  "hampp-core",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-envelope"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hex",
  "proptest",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-py"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hampp-core",
  "hampp-envelope",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-session"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hampp-core",
  "hampp-envelope",
@@ -561,7 +561,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-sim"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hampp-core",
  "hampp-envelope",
@@ -578,7 +578,7 @@ dependencies = [
 
 [[package]]
 name = "hampp-tpm"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "hampp-core",
  "hex",
